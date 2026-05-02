@@ -12,7 +12,7 @@ What's in scope:
 
 - **AccountProfile** — one row per IG account you operate. Holds the persona reference and (later) credentials.
 - **Persona** — character config (name, tone, languages, required hashtags, few-shot examples). Drives caption generation. Default seed: `暖暖豬`.
-- **Caption Studio** — upload a photo, pick a persona, get back ZH/JA/EN copy + 5 hashtags. Powered by Claude Sonnet 4.6 with prompt caching on the persona prompt (no more "Gemini forgot the setup").
+- **Caption Studio** — upload a photo, pick a persona, get back ZH/JA/EN copy + 5 hashtags. Powered by Gemini 2.5 Pro (free tier). The persona spec is sent as `system_instruction` on every call, so the model never forgets the setup the way a chat session would.
 
 What's NOT in scope yet (Phase 2+):
 
@@ -30,7 +30,7 @@ What's NOT in scope yet (Phase 2+):
 |---|---|
 | Backend | FastAPI + SQLAlchemy + SQLite |
 | Frontend | Vite + React + TypeScript + Tailwind |
-| LLM | Claude Sonnet 4.6 (Anthropic SDK) with prompt caching |
+| LLM | Gemini 2.5 Pro (Google AI Studio free tier, `google-genai` SDK) |
 
 ---
 
@@ -40,7 +40,7 @@ What's NOT in scope yet (Phase 2+):
 
 ```bash
 cp .env.example .env
-# edit .env, set ANTHROPIC_API_KEY
+# edit .env, set GEMINI_API_KEY (free key from https://aistudio.google.com/apikey)
 ```
 
 ### 2. Backend
@@ -79,7 +79,7 @@ ig-autopilot/
 │   ├── schemas/                Pydantic request/response schemas
 │   ├── routers/                profiles, personas, caption
 │   ├── services/
-│   │   └── caption_generator.py   Claude API + prompt caching + vision
+│   │   └── caption_generator.py   Gemini API + system_instruction + vision
 │   └── seed.py                 inserts 暖暖豬 demo persona
 └── frontend/
     └── src/

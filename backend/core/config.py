@@ -13,8 +13,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    anthropic_api_key: str = ""
-    claude_model: str = "claude-sonnet-4-6"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-pro"
 
     database_url: str = f"sqlite:///{BASE_DIR / 'data' / 'ig_autopilot.db'}"
     backend_host: str = "0.0.0.0"

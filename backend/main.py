@@ -26,7 +26,7 @@ def _create_tables() -> None:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "model": settings.claude_model}
+    return {"status": "ok", "model": settings.gemini_model}
 
 
 app.include_router(personas.router)

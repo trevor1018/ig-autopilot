@@ -1,63 +1,45 @@
 """
-Caption generator powered by Claude Sonnet 4.6.
+Caption generator powered by Gemini 2.5 Pro (free tier).
 
 Why this design:
-- The persona prompt (character, tones, style rules, few-shot examples) is large
-  and reused across every photo. Putting it in `system` with cache_control means
-  the second call onwards reads it from cache at ~0.1x cost.
-- The persona prompt is FROZEN at request time. The only volatile content goes
-  into the user message (the photo + optional hint). Stable -> volatile order is
-  what makes prompt caching actually work.
-- Output is constrained via output_config.format json_schema so the frontend
-  always gets {captions: {zh, ja, en}, hashtags: [...], photo_summary: "..."}.
+- The persona spec (character, tones, style rules, few-shot examples) is sent
+  as `system_instruction` on every request. Each call gets the full setup —
+  Gemini cannot "forget" between requests the way a chat session does.
+- The photo is passed as a Part with raw bytes + mime_type — no extra deps.
+- `response_schema` constrains output to {photo_summary, captions, hashtags}
+  so the frontend always receives well-formed JSON.
+- Free tier doesn't expose explicit cache stats, so cache_* fields stay zero.
 """
 
 from __future__ import annotations
 
-import base64
-import json
 from typing import Any
 
-import anthropic
+from google import genai
+from google.genai import types
+from pydantic import BaseModel
 
 from core.config import settings
 from models.persona import Persona
 
 
-CAPTION_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "photo_summary": {
-            "type": "string",
-            "description": "One short sentence describing what is in the photo.",
-        },
-        "captions": {
-            "type": "object",
-            "properties": {
-                "zh": {"type": "string", "description": "Traditional Chinese (zh-TW) caption."},
-                "ja": {"type": "string", "description": "Japanese caption."},
-                "en": {"type": "string", "description": "English caption."},
-            },
-            "required": ["zh", "ja", "en"],
-            "additionalProperties": False,
-        },
-        "hashtags": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Exactly N hashtags including the #-prefix.",
-        },
-    },
-    "required": ["photo_summary", "captions", "hashtags"],
-    "additionalProperties": False,
-}
+class _Captions(BaseModel):
+    zh: str
+    ja: str
+    en: str
+
+
+class _CaptionOutput(BaseModel):
+    photo_summary: str
+    captions: _Captions
+    hashtags: list[str]
 
 
 def build_persona_system_prompt(persona: Persona) -> str:
-    """Render the full persona spec as a single text block.
+    """Render the full persona spec as a single system instruction.
 
-    This is the cacheable portion. Keep it deterministic — no timestamps, no
-    randomness, no per-request fields. If you change wording, the cache resets
-    once and then re-stabilizes.
+    Keep it deterministic — no timestamps, no randomness, no per-request
+    fields. The same persona always yields the same instruction string.
     """
     tones = "、".join(persona.tones) if persona.tones else "natural"
     langs = ", ".join(persona.languages) if persona.languages else "zh, ja, en"
@@ -133,59 +115,43 @@ def generate_caption(
     filename: str | None = None,
     user_hint: str = "",
 ) -> dict[str, Any]:
-    if not settings.anthropic_api_key:
+    if not settings.gemini_api_key:
         raise RuntimeError(
-            "ANTHROPIC_API_KEY is not set. Copy .env.example to .env and fill it in."
+            "GEMINI_API_KEY is not set. Copy .env.example to .env and fill it in. "
+            "Get a free key at https://aistudio.google.com/apikey"
         )
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = genai.Client(api_key=settings.gemini_api_key)
 
     system_prompt = build_persona_system_prompt(persona)
     media_type = _detect_media_type(filename, image_bytes)
-    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
-
-    user_content: list[dict[str, Any]] = [
-        {
-            "type": "image",
-            "source": {"type": "base64", "media_type": media_type, "data": image_b64},
-        },
-        {
-            "type": "text",
-            "text": (
-                f"Generate the caption set for this photo.\n"
-                f"User hint (may be empty): {user_hint or '(none)'}"
-            ),
-        },
-    ]
-
-    response = client.messages.create(
-        model=settings.claude_model,
-        max_tokens=2048,
-        system=[
-            {
-                "type": "text",
-                "text": system_prompt,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[{"role": "user", "content": user_content}],
-        output_config={
-            "format": {"type": "json_schema", "schema": CAPTION_SCHEMA},
-        },
+    image_part = types.Part.from_bytes(data=image_bytes, mime_type=media_type)
+    user_text = (
+        f"Generate the caption set for this photo.\n"
+        f"User hint (may be empty): {user_hint or '(none)'}"
     )
 
-    text = next((b.text for b in response.content if b.type == "text"), "")
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"Model returned non-JSON output: {text[:200]}") from e
+    response = client.models.generate_content(
+        model=settings.gemini_model,
+        contents=[image_part, user_text],
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type="application/json",
+            response_schema=_CaptionOutput,
+        ),
+    )
 
+    parsed = response.parsed
+    if parsed is None:
+        raise RuntimeError(f"Gemini returned no parseable output. Raw text: {response.text[:200]}")
+
+    usage = response.usage_metadata
     return {
-        "captions": parsed.get("captions", {}),
-        "hashtags": parsed.get("hashtags", []),
-        "photo_summary": parsed.get("photo_summary", ""),
-        "cache_read_tokens": getattr(response.usage, "cache_read_input_tokens", 0) or 0,
-        "cache_creation_tokens": getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
-        "input_tokens": response.usage.input_tokens,
-        "output_tokens": response.usage.output_tokens,
+        "captions": parsed.captions.model_dump(),
+        "hashtags": parsed.hashtags,
+        "photo_summary": parsed.photo_summary,
+        "input_tokens": getattr(usage, "prompt_token_count", 0) or 0,
+        "output_tokens": getattr(usage, "candidates_token_count", 0) or 0,
+        "cache_read_tokens": getattr(usage, "cached_content_token_count", 0) or 0,
+        "cache_creation_tokens": 0,
     }
