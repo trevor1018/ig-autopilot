@@ -21,6 +21,21 @@ class Settings(BaseSettings):
     backend_port: int = 8000
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
+    ig_dry_run: bool = True
+    ig_username: str = ""
+    ig_password: str = ""
+    ig_proxy: str = ""
+
+    sweep_hours: str = "0,8,16"
+    daily_action_cap: int = 120
+    like_ratio: float = 0.9
+    action_delay_min_sec: int = 30
+    action_delay_max_sec: int = 300
+
+    @property
+    def sweep_hour_list(self) -> list[int]:
+        return [int(h.strip()) for h in self.sweep_hours.split(",") if h.strip()]
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
