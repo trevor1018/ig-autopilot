@@ -60,8 +60,12 @@ def build_persona_system_prompt(persona: Persona) -> str:
         f"\nHashtag rules:\n"
         f"  - Always produce exactly {persona.hashtag_count} hashtags.\n"
         f"  - These MUST be included: {required_tags or '(none)'}.\n"
-        f"  - The remaining hashtags should fit the photo content and audience.\n"
-        f"  - Each hashtag is a single token starting with #."
+        f"  - Distribute languages: among the {persona.hashtag_count} hashtags, include "
+        f"AT LEAST ONE hashtag in each of these languages: {langs}. "
+        f"Required hashtags count toward this rule (e.g. #暖暖豬 counts as zh). "
+        f"For the remaining slots, fill in tags that fit the photo content and audience, "
+        f"making sure every listed language has at least one tag.\n"
+        f"  - Each hashtag is a single token starting with #, no spaces inside the tag."
     )
 
     if persona.style_notes:

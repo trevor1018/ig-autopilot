@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { CaptionResponse, Persona, api } from "../api/client";
 
+function formatFullPost(
+  captions: { zh: string; ja: string; en: string },
+  hashtags: string[],
+): string {
+  const tagLine = hashtags
+    .map((h) => (h.startsWith("#") ? h : `#${h}`))
+    .join("");
+  return `${captions.zh}\n.\n${captions.ja}\n.\n${captions.en}\n\n${tagLine}`;
+}
+
 function CaptionStudio() {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [personaId, setPersonaId] = useState<number | null>(null);
@@ -10,6 +20,7 @@ function CaptionStudio() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CaptionResponse | null>(null);
+  const [copiedAll, setCopiedAll] = useState(false);
 
   useEffect(() => {
     api
@@ -57,6 +68,18 @@ function CaptionStudio() {
 
   function copy(text: string) {
     navigator.clipboard.writeText(text).catch(() => {});
+  }
+
+  function copyFullPost() {
+    if (!result) return;
+    const text = formatFullPost(result.captions, result.hashtags);
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopiedAll(true);
+        setTimeout(() => setCopiedAll(false), 1500);
+      },
+      () => {},
+    );
   }
 
   return (
@@ -137,11 +160,20 @@ function CaptionStudio() {
         )}
         {loading && (
           <div className="bg-white p-6 rounded-lg border border-slate-200 text-slate-500">
-            Calling Claude — first run pays cache write, subsequent runs hit cache.
+            Calling Gemini...
           </div>
         )}
         {result && (
           <div className="space-y-4">
+            <button
+              onClick={copyFullPost}
+              className={`w-full font-semibold py-3 rounded-lg transition text-white ${
+                copiedAll ? "bg-green-600" : "bg-brand-500 hover:bg-brand-600"
+              }`}
+            >
+              {copiedAll ? "✓ Copied — paste into IG" : "📋 Copy full post"}
+            </button>
+
             {result.photo_summary && (
               <div className="bg-white p-4 rounded-lg border border-slate-200">
                 <div className="text-xs text-slate-400 mb-1">Photo summary</div>
