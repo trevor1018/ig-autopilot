@@ -35,6 +35,11 @@ backend/data/
 node_modules/
 dist/
 .vite/
+# tsc -b can emit these by default; we use Vite for actual build, so block them
+frontend/src/**/*.js
+frontend/src/**/*.js.map
+frontend/src/**/*.d.ts
+!frontend/src/vite-env.d.ts
 *.log
 npm-debug.log*
 yarn-debug.log*

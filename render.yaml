@@ -1,0 +1,50 @@
+# Render.com deployment spec for the FastAPI backend.
+#
+# How to use:
+# 1. Sign up / log in to https://render.com (free tier OK)
+# 2. New + → Blueprint → connect this GitHub repo
+# 3. Render auto-detects this file and shows the service preview
+# 4. Click Apply → service starts building
+# 5. Once live, set GEMINI_API_KEY in the Render dashboard (Settings → Environment)
+#
+# Notes:
+# - SQLite is kept on a 1GB persistent disk so data survives redeploys.
+# - Free tier sleeps after 15 min of inactivity; first request after sleep takes ~30s.
+# - Once you upgrade to paid, the scheduler keeps running 24/7.
+
+services:
+  - type: web
+    name: ig-autopilot-api
+    runtime: python
+    plan: free
+    region: singapore  # change to your nearest Render region
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: ig-autopilot-data
+      mountPath: /opt/render/project/src/backend/data
+      sizeGB: 1
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false  # set manually in dashboard — never in repo
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: DATABASE_URL
+        value: sqlite:////opt/render/project/src/backend/data/ig_autopilot.db
+      - key: CORS_ORIGINS
+        sync: false  # set after frontend is deployed; e.g. https://ig-autopilot.vercel.app
+      - key: IG_DRY_RUN
+        value: "true"  # never flip without thinking — risk of IG bans
+      - key: SWEEP_HOURS
+        value: 0,8,16
+      - key: DAILY_ACTION_CAP
+        value: "120"
+      - key: LIKE_RATIO
+        value: "0.9"
+      - key: ACTION_DELAY_MIN_SEC
+        value: "30"
+      - key: ACTION_DELAY_MAX_SEC
+        value: "300"
