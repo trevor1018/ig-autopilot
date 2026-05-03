@@ -83,6 +83,16 @@ class RealInstagramClient:
     Instantiated lazily — instagrapi import is deferred so dry-run users don't
     need to install/import it (and we don't accidentally trigger a real session
     just by importing this module).
+
+    Session persistence:
+      - On construction we load_settings() if a session file exists.
+      - We only call login() if we haven't already authenticated (probed via
+        get_timeline_feed which requires auth).
+      - After successful auth we dump_settings() so the next sweep reuses the
+        cookies / device fingerprint instead of triggering "new login" alerts.
+
+    This is the single most important defense against IG flagging the account
+    as a bot — frequent re-logins from a server are the #1 ban trigger.
     """
 
     def __init__(self, username: str, password: str, session_path: Path | None = None) -> None:
@@ -90,15 +100,35 @@ class RealInstagramClient:
 
         self._client = Client()
         self._session_path = session_path
+
+        loaded_existing = False
         if session_path and session_path.exists():
             try:
                 self._client.load_settings(str(session_path))
+                loaded_existing = True
             except Exception:
-                pass  # corrupted session — fall through to login
-        self._client.login(username, password)
+                # Corrupted / version-mismatched session — wipe and fall through.
+                self._client = Client()
+                loaded_existing = False
+
+        if loaded_existing:
+            try:
+                # Cheap auth probe; raises LoginRequired if session expired.
+                self._client.get_timeline_feed()
+                # Session valid — done. No login() call, no "new device" alert.
+            except Exception:
+                # Session expired — full login.
+                self._client = Client()
+                self._client.login(username, password)
+        else:
+            self._client.login(username, password)
+
         if session_path:
             session_path.parent.mkdir(parents=True, exist_ok=True)
-            self._client.dump_settings(str(session_path))
+            try:
+                self._client.dump_settings(str(session_path))
+            except Exception:
+                pass  # non-fatal — session reuse is an optimization
 
     def fetch_recent_posts(self, username: str, limit: int = 3) -> list[IGPost]:
         user_id = self._client.user_id_from_username(username)

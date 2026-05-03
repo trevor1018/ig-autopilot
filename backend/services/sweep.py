@@ -21,19 +21,24 @@ this — sleeping mid-test would make them slow.
 from __future__ import annotations
 
 import random
-import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable
 
 from sqlalchemy.orm import Session
 
-from core.config import settings
+from core.config import BASE_DIR, settings
 from models.account_profile import AccountProfile
 from models.interaction_log import InteractionLog
 from models.sweep_run import SweepRun
 from models.target_account import TargetAccount
 from services import safety_guard
 from services.instagram_client import InstagramClient, build_client
+
+
+# Session files persist instagrapi cookies / device fingerprint between sweeps
+# so the same logical IG identity is reused (critical for ban avoidance).
+SESSION_DIR = BASE_DIR / "data" / "sessions"
 
 
 # Hook so tests / callers can swap in a mock comment generator
@@ -61,21 +66,36 @@ def run_sweep(
     rng = rng or random
     sleep_fn = sleep_fn  # leave as None in dry-run; only call if real
 
-    if ig_client is None:
-        ig_client = build_client(
-            dry_run=settings.ig_dry_run,
-            username=settings.ig_username,
-            password=settings.ig_password,
-        )
+    sweep = SweepRun(profile_id=profile.id, trigger=trigger, status="running", started_at=_utcnow())
+    db.add(sweep)
+    db.commit()
+    db.refresh(sweep)
 
     if comment_generator is None:
         from services.comment_generator import generate_comment as _real_comment
         comment_generator = _real_comment
 
-    sweep = SweepRun(profile_id=profile.id, trigger=trigger, status="running", started_at=_utcnow())
-    db.add(sweep)
-    db.commit()
-    db.refresh(sweep)
+    # Build IG client AFTER the sweep row exists so login failures get
+    # recorded as a failed sweep rather than a 500 to the caller.
+    if ig_client is None:
+        try:
+            ig_client = build_client(
+                dry_run=settings.ig_dry_run,
+                username=settings.ig_username,
+                password=settings.ig_password,
+                session_dir=SESSION_DIR,
+            )
+        except Exception as exc:
+            sweep.status = "failed"
+            sweep.error_message = f"IG login failed: {str(exc)[:400]}"
+            sweep.finished_at = _utcnow()
+            db.commit()
+            db.refresh(sweep)
+            return sweep
+
+    # Determine mode flags up-front so logic below stays readable.
+    skip_real_writes = settings.ig_dry_run or settings.ig_read_only
+    log_dry_run_flag = skip_real_writes  # True in DRY_RUN and READ_ONLY modes
 
     targets = (
         db.query(TargetAccount)
@@ -164,10 +184,10 @@ def run_sweep(
                     except Exception:
                         comment_text = "🐷"  # never block sweep on comment-gen failure
 
-                # Execute (or pretend to, in dry-run)
+                # Execute the IG side (or skip in dry_run / read_only)
                 executed = False
                 err = ""
-                if not settings.ig_dry_run:
+                if not skip_real_writes:
                     try:
                         if action == "like":
                             executed = ig_client.like_post(post.post_id)
@@ -184,24 +204,25 @@ def run_sweep(
                         )
                         sleep_fn(delay)
 
+                action_completed = skip_real_writes or executed
                 _record_log(
                     db,
                     sweep=sweep,
                     profile=profile,
                     target=target,
                     action_type=action,
-                    status=("executed" if (settings.ig_dry_run or executed) else "failed"),
+                    status=("executed" if action_completed else "failed"),
                     target_post_id=post.post_id,
                     target_post_url=post.url,
                     target_username=target.ig_username,
                     comment_text=comment_text,
                     error_message=err,
-                    dry_run=settings.ig_dry_run,
+                    dry_run=log_dry_run_flag,
                 )
 
-                if settings.ig_dry_run or executed:
+                if action_completed:
                     sweep.actions_planned += 1
-                    if not settings.ig_dry_run:
+                    if not skip_real_writes:
                         sweep.actions_executed += 1
                     used_today += 1
                 else:

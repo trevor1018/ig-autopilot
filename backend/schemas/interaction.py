@@ -51,3 +51,4 @@ class QuotaStatus(BaseModel):
     remaining: int
     seconds_until_reset: int
     dry_run: bool
+    mode: str  # "dry_run" | "read_only" | "live"

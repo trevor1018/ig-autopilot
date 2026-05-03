@@ -24,6 +24,29 @@ const TRIGGER_LABELS: Record<string, string> = {
   manual: "手動",
 };
 
+function modeBadge(mode: "dry_run" | "read_only" | "live") {
+  switch (mode) {
+    case "dry_run":
+      return {
+        label: "🧪 DRY-RUN 模式",
+        sub: "用合成假資料，不碰 IG，零風險",
+        className: "bg-slate-100 text-slate-700",
+      };
+    case "read_only":
+      return {
+        label: "👁️ READ-ONLY 模式",
+        sub: "真登入 + 抓真貼文，但不執行 like / comment",
+        className: "bg-amber-100 text-amber-700",
+      };
+    case "live":
+      return {
+        label: "🔴 LIVE 模式",
+        sub: "真互動中 — 注意配額與 IG 風控警示",
+        className: "bg-red-100 text-red-700",
+      };
+  }
+}
+
 function SweepDashboard() {
   const [profiles, setProfiles] = useState<AccountProfile[]>([]);
   const [profileId, setProfileId] = useState<number | "">("");
@@ -102,11 +125,16 @@ function SweepDashboard() {
       {/* Quota gauge */}
       {quota && (
         <div className="bg-white border border-slate-200 rounded-lg p-5">
-          <div className="flex justify-between items-baseline mb-2">
+          <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
             <h3 className="font-semibold">今日配額</h3>
-            <span className="text-xs text-slate-400">
-              {quota.dry_run ? "🧪 DRY-RUN 模式 (不會真的對 IG 動作)" : "🔴 LIVE 模式"}
-            </span>
+            <div
+              className={`text-xs px-2 py-1 rounded font-medium ${modeBadge(quota.mode).className}`}
+            >
+              {modeBadge(quota.mode).label}
+              <span className="block text-[10px] font-normal opacity-80 mt-0.5">
+                {modeBadge(quota.mode).sub}
+              </span>
+            </div>
           </div>
           <div className="text-3xl font-bold mb-2">
             {quota.used_today}{" "}

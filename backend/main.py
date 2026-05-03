@@ -41,7 +41,9 @@ def health() -> dict:
     return {
         "status": "ok",
         "model": settings.gemini_model,
+        "mode": settings.current_mode,
         "ig_dry_run": settings.ig_dry_run,
+        "ig_read_only": settings.ig_read_only,
         "sweep_hours_utc": settings.sweep_hour_list,
     }
 

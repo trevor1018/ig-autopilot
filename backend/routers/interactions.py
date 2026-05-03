@@ -51,4 +51,5 @@ def get_quota(profile_id: int, db: Session = Depends(get_db)):
         remaining=max(0, cap - used),
         seconds_until_reset=safety_guard.next_reset_in_seconds(),
         dry_run=settings.ig_dry_run,
+        mode=settings.current_mode,
     )

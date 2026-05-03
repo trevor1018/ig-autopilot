@@ -112,6 +112,7 @@ export interface QuotaStatus {
   remaining: number;
   seconds_until_reset: number;
   dry_run: boolean;
+  mode: "dry_run" | "read_only" | "live";
 }
 
 async function handle<T>(res: Response): Promise<T> {

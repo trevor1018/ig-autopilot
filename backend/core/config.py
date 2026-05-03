@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
     ig_dry_run: bool = True
+    # READ-ONLY mode: real login + real post fetch, but the sweep service
+    # SKIPS the actual like/comment write. Lets you preview with real data
+    # without ban risk. Ignored when ig_dry_run=true (dry-run still wins).
+    ig_read_only: bool = False
     ig_username: str = ""
     ig_password: str = ""
     ig_proxy: str = ""
@@ -35,6 +39,15 @@ class Settings(BaseSettings):
     @property
     def sweep_hour_list(self) -> list[int]:
         return [int(h.strip()) for h in self.sweep_hours.split(",") if h.strip()]
+
+    @property
+    def current_mode(self) -> str:
+        """One of 'dry_run' / 'read_only' / 'live'. dry_run wins over read_only."""
+        if self.ig_dry_run:
+            return "dry_run"
+        if self.ig_read_only:
+            return "read_only"
+        return "live"
 
     @property
     def cors_origin_list(self) -> list[str]:

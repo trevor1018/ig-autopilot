@@ -6,6 +6,7 @@
 *.session.json
 cookies.json
 sessions/
+backend/data/sessions/
 credentials/
 *.pem
 *.key
