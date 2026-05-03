@@ -12,7 +12,16 @@ import { buildPersonaSystemPrompt, buildShortPersonaContext } from "./persona-pr
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export const TEXT_MODEL = "gemini-2.5-flash";
-export const IMAGE_MODEL = "gemini-2.5-flash-image-preview";
+// "Nano Banana" — Google's instruction-based image edit + gen model.
+// Was originally `gemini-2.5-flash-image-preview`, rebranded to GA name
+// `gemini-2.5-flash-image` in late 2025. If you get a 404 NOT_FOUND on this,
+// try the alternates below — model IDs Google offers do shift over time.
+//
+// Known IDs to try (newest → oldest):
+//   gemini-2.5-flash-image                  ← current GA, default
+//   gemini-2.5-flash-image-preview          ← previous preview name
+//   gemini-2.0-flash-exp-image-generation   ← older 2.0 experimental
+export const IMAGE_MODEL = "gemini-2.5-flash-image";
 
 interface InlinePart {
   inlineData: { mimeType: string; data: string };
