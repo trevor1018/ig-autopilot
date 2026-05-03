@@ -12,16 +12,19 @@ import { buildPersonaSystemPrompt, buildShortPersonaContext } from "./persona-pr
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export const TEXT_MODEL = "gemini-2.5-flash";
-// "Nano Banana" — Google's instruction-based image edit + gen model.
-// Was originally `gemini-2.5-flash-image-preview`, rebranded to GA name
-// `gemini-2.5-flash-image` in late 2025. If you get a 404 NOT_FOUND on this,
-// try the alternates below — model IDs Google offers do shift over time.
+// Image edit + gen model. Google has been moving newer image models to paid
+// tier (limit: 0 on free tier even though API responds), so we default to the
+// older 2.0 experimental which still has free quota as of writing.
 //
-// Known IDs to try (newest → oldest):
-//   gemini-2.5-flash-image                  ← current GA, default
-//   gemini-2.5-flash-image-preview          ← previous preview name
-//   gemini-2.0-flash-exp-image-generation   ← older 2.0 experimental
-export const IMAGE_MODEL = "gemini-2.5-flash-image";
+// Known IDs to try (free tier most-likely → least-likely):
+//   gemini-2.0-flash-exp-image-generation   ← older but free tier alive
+//   gemini-2.5-flash-image                  ← GA but limit:0 on free tier
+//   gemini-2.5-flash-image-preview          ← previous preview name (404)
+//
+// If quota errors persist on all of these, image studio is unusable on free
+// Gemini API and the user needs paid Google AI Studio billing OR a different
+// provider (Pollinations.ai, fal.ai, etc.).
+export const IMAGE_MODEL = "gemini-2.0-flash-exp-image-generation";
 
 interface InlinePart {
   inlineData: { mimeType: string; data: string };
@@ -251,6 +254,12 @@ function extractImage(r: GeminiResponse): ImageGenResult {
   };
 }
 
+// `responseModalities` tells Gemini we want an IMAGE back, not just text.
+// Required for the 2.0-flash-exp-image-generation model; harmless on others.
+const IMAGE_GEN_CONFIG = {
+  responseModalities: ["IMAGE", "TEXT"],
+};
+
 export async function editImage(
   imageBase64: string,
   imageMime: string,
@@ -271,6 +280,7 @@ export async function editImage(
         ],
       },
     ],
+    generationConfig: IMAGE_GEN_CONFIG,
   };
   return extractImage(await callGemini(IMAGE_MODEL, body, apiKey));
 }
@@ -286,6 +296,7 @@ export async function generateImage(
     : prompt.trim();
   const body = {
     contents: [{ parts: [{ text: fullPrompt }] }],
+    generationConfig: IMAGE_GEN_CONFIG,
   };
   return extractImage(await callGemini(IMAGE_MODEL, body, apiKey));
 }
