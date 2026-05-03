@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { CaptionResponse, Persona, api } from "../api/client";
 
+const MAX_PHOTOS = 10;
+
 function formatFullPost(
   captions: { zh: string; ja: string; en: string },
   hashtags: string[],
@@ -14,8 +16,8 @@ function formatFullPost(
 function CaptionStudio() {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [personaId, setPersonaId] = useState<number | null>(null);
-  const [photo, setPhoto] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [userHint, setUserHint] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,31 +35,53 @@ function CaptionStudio() {
   }, []);
 
   useEffect(() => {
-    if (!photo) {
-      setPreviewUrl(null);
+    if (photos.length === 0) {
+      setPreviewUrls([]);
       return;
     }
-    const url = URL.createObjectURL(photo);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [photo]);
+    const urls = photos.map((p) => URL.createObjectURL(p));
+    setPreviewUrls(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [photos]);
 
   const selectedPersona = useMemo(
     () => personas.find((p) => p.id === personaId) ?? null,
     [personas, personaId],
   );
 
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length === 0) return;
+    if (picked.length > MAX_PHOTOS) {
+      setError(`一次最多 ${MAX_PHOTOS} 張(IG carousel 上限),已截取前 ${MAX_PHOTOS} 張`);
+      setPhotos(picked.slice(0, MAX_PHOTOS));
+    } else {
+      setError(null);
+      setPhotos(picked);
+    }
+    // Allow re-picking the same files later (e.g. after removing one)
+    e.target.value = "";
+  }
+
+  function removePhoto(index: number) {
+    setPhotos((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function clearAllPhotos() {
+    setPhotos([]);
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!personaId || !photo) {
-      setError("請先選擇角色並上傳照片");
+    if (!personaId || photos.length === 0) {
+      setError("請先選擇角色並上傳至少一張照片");
       return;
     }
     setLoading(true);
     setError(null);
     setResult(null);
     try {
-      const res = await api.generateCaption(personaId, photo, userHint);
+      const res = await api.generateCaption(personaId, photos, userHint);
       setResult(res);
     } catch (e) {
       setError(String(e));
@@ -110,15 +134,62 @@ function CaptionStudio() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">照片</label>
+            <label className="block text-sm font-medium mb-1">
+              照片{" "}
+              <span className="text-xs font-normal text-slate-400">
+                (可多張,最多 {MAX_PHOTOS} 張 — 多張視為 IG 輪播貼文)
+              </span>
+            </label>
             <input
               type="file"
               accept="image/*"
-              onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+              multiple
+              onChange={onFileChange}
               className="block w-full text-sm"
             />
-            {previewUrl && (
-              <img src={previewUrl} alt="preview" className="mt-3 max-h-72 rounded-md border" />
+
+            {photos.length > 0 && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-2 text-xs">
+                  <span className="text-slate-600 font-medium">
+                    已選 {photos.length} 張
+                    {photos.length > 1 && (
+                      <span className="ml-2 px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded">
+                        🎠 輪播
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={clearAllPhotos}
+                    className="text-slate-500 hover:text-red-600"
+                  >
+                    全部清除
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {previewUrls.map((url, i) => (
+                    <div key={i} className="relative group">
+                      <img
+                        src={url}
+                        alt={`預覽 ${i + 1}`}
+                        className="w-full h-24 object-cover rounded border border-slate-200"
+                      />
+                      <div className="absolute top-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                        {i + 1}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(i)}
+                        className="absolute top-1 right-1 bg-white/95 hover:bg-white text-red-600 rounded-full w-5 h-5 text-xs font-bold flex items-center justify-center shadow"
+                        title="移除這張"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
@@ -137,10 +208,14 @@ function CaptionStudio() {
 
           <button
             type="submit"
-            disabled={loading || !photo || !personaId}
+            disabled={loading || photos.length === 0 || !personaId}
             className="w-full bg-brand-500 hover:bg-brand-600 disabled:bg-slate-300 text-white font-medium py-2 rounded-md transition"
           >
-            {loading ? "產生中..." : "產生文案"}
+            {loading
+              ? "產生中..."
+              : photos.length > 1
+                ? `產生文案 (${photos.length} 張輪播)`
+                : "產生文案"}
           </button>
 
           {error && (
@@ -176,7 +251,9 @@ function CaptionStudio() {
 
             {result.photo_summary && (
               <div className="bg-white p-4 rounded-lg border border-slate-200">
-                <div className="text-xs text-slate-400 mb-1">照片摘要</div>
+                <div className="text-xs text-slate-400 mb-1">
+                  {photos.length > 1 ? "輪播摘要" : "照片摘要"}
+                </div>
                 <div className="text-sm">{result.photo_summary}</div>
               </div>
             )}

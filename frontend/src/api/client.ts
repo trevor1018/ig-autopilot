@@ -165,13 +165,15 @@ export const api = {
 
   generateCaption: async (
     personaId: number,
-    photo: File,
+    photos: File[],
     userHint: string,
   ): Promise<CaptionResponse> => {
     const fd = new FormData();
     fd.append("persona_id", String(personaId));
     fd.append("user_hint", userHint);
-    fd.append("photo", photo);
+    // Append each file under the same field name "photos" — FastAPI maps
+    // repeated multipart fields with the same name to a list[UploadFile].
+    photos.forEach((p) => fd.append("photos", p));
     const res = await fetch(`${API_BASE}/caption/generate`, { method: "POST", body: fd });
     return handle<CaptionResponse>(res);
   },

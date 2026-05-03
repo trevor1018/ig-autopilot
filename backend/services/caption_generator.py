@@ -5,7 +5,9 @@ Why this design:
 - The persona spec (character, tones, style rules, few-shot examples) is sent
   as `system_instruction` on every request. Each call gets the full setup —
   Gemini cannot "forget" between requests the way a chat session does.
-- The photo is passed as a Part with raw bytes + mime_type — no extra deps.
+- Photos are passed as Parts with raw bytes + mime_type — no extra deps.
+  Single-photo posts and multi-photo IG carousels go through the same path;
+  the user_text just tells Gemini whether to write for one shot or a set.
 - `response_schema` constrains output to {photo_summary, captions, hashtags}
   so the frontend always receives well-formed JSON.
 - Free tier doesn't expose explicit cache stats, so cache_* fields stay zero.
@@ -85,8 +87,10 @@ def build_persona_system_prompt(persona: Persona) -> str:
                 parts.append(f"  EN: {ex['caption_en']}")
 
     parts.append(
-        "\nWhen given a new photo, respond with JSON only: a short photo_summary, "
-        "captions in each language, and the hashtag list."
+        "\nWhen given a new photo (or a set of photos for an IG carousel post), respond "
+        "with JSON only: a short photo_summary, captions in each language, and the hashtag "
+        "list. For multi-photo posts, write the captions for the SET as a whole — they should "
+        "tie the photos together as one mini story, not describe any single shot."
     )
     return "".join(parts)
 
@@ -115,29 +119,49 @@ def _detect_media_type(filename: str | None, content: bytes) -> str:
 
 def generate_caption(
     persona: Persona,
-    image_bytes: bytes,
-    filename: str | None = None,
+    photos: list[tuple[bytes, str | None]],
     user_hint: str = "",
 ) -> dict[str, Any]:
+    """Generate captions for one photo or a multi-photo carousel.
+
+    `photos` is a list of (image_bytes, filename) tuples. Length 1 = single
+    post, 2-10 = IG carousel. Filename is used only to sniff mime type.
+    """
     if not settings.gemini_api_key:
         raise RuntimeError(
             "GEMINI_API_KEY is not set. Copy .env.example to .env and fill it in. "
             "Get a free key at https://aistudio.google.com/apikey"
         )
+    if not photos:
+        raise RuntimeError("At least one photo is required.")
 
     client = genai.Client(api_key=settings.gemini_api_key)
 
     system_prompt = build_persona_system_prompt(persona)
-    media_type = _detect_media_type(filename, image_bytes)
-    image_part = types.Part.from_bytes(data=image_bytes, mime_type=media_type)
-    user_text = (
-        f"Generate the caption set for this photo.\n"
-        f"User hint (may be empty): {user_hint or '(none)'}"
-    )
+
+    image_parts = []
+    for img_bytes, filename in photos:
+        media_type = _detect_media_type(filename, img_bytes)
+        image_parts.append(types.Part.from_bytes(data=img_bytes, mime_type=media_type))
+
+    n = len(photos)
+    if n == 1:
+        user_text = (
+            f"Generate the caption set for this photo.\n"
+            f"User hint (may be empty): {user_hint or '(none)'}"
+        )
+    else:
+        user_text = (
+            f"Generate the caption set for this {n}-photo Instagram CAROUSEL post. "
+            f"All {n} images belong to the same post and share ONE caption set — write captions "
+            f"that work as a single voice across the whole set, not photo-by-photo. "
+            f"The photo_summary should briefly describe the set as a whole.\n"
+            f"User hint (may be empty): {user_hint or '(none)'}"
+        )
 
     response = client.models.generate_content(
         model=settings.gemini_model,
-        contents=[image_part, user_text],
+        contents=[*image_parts, user_text],
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             response_mime_type="application/json",
