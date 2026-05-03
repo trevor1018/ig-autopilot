@@ -3,7 +3,6 @@
 This guide takes you from "works on my laptop" → "real public URLs".
 
 > **Prerequisite check before starting:**
-> - [ ] `phase-2` branch reviewed and merged into `main`
 > - [ ] You have a Google account (for Vercel) and email (for Render) ready
 > - [ ] Your `GEMINI_API_KEY` is in hand (you already have one — same one as `.env` locally)
 

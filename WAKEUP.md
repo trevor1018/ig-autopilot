@@ -6,19 +6,18 @@
 
 ✅ Phase 2 後端 + 前端、Phase 3 analytics scaffold、部署設定全部寫完
 ✅ 26 個 pytest 全綠、frontend 編譯零 error
-✅ 全部 commit 在 `phase-2` 分支上、已 push 到 GitHub
-❌ **沒有 push 到 main**（Claude Code 政策禁止；你睡醒自己 review + merge PR）
+✅ 全部已合併進 `main` 並 push 到 GitHub（原 `phase-2` 分支已刪除)
 ❌ **沒有真的部署**（要你登入 Vercel + Render，我沒有你的帳號）
 
-下一步：你開 PR、merge 到 main、按 `DEPLOY.md` 步驟把網站推上線。
+下一步：按 `DEPLOY.md` 步驟把網站推上線。
 
 ---
 
 ## 1. 哪些東西在哪
 
 ### 程式碼
-所有改動在 `phase-2` 分支上：
-👉 https://github.com/trevor1018/ig-autopilot/tree/phase-2
+所有改動已合併進 `main`：
+👉 https://github.com/trevor1018/ig-autopilot
 
 ### 兩個 commit
 ```
@@ -27,13 +26,6 @@ xxx...  Phase 2 backend: targets, interaction log, safety guard, scheduler
 ```
 
 第一個 commit 是 backend（model + service + router + 26 tests），第二個是 frontend（4 個新頁）+ Phase 3 + deploy configs。
-
-### 開 PR 的指令
-```powershell
-# 在你的瀏覽器直接點：
-# https://github.com/trevor1018/ig-autopilot/pull/new/phase-2
-```
-GitHub 會跳出 "Create Pull Request" 頁面，你 review diff、按 Merge → 進到 main。
 
 ---
 
@@ -100,9 +92,8 @@ GitHub 會跳出 "Create Pull Request" 頁面，你 review diff、按 Merge → 
 | `DEPLOY.md` | **完整 step-by-step 教學**（30 分鐘可上線） |
 
 **你睡醒要做的事**：
-1. 開 PR、merge `phase-2` 到 main
-2. 跟著 `DEPLOY.md` 走（Render → Vercel → CORS → seed DB → smoke test）
-3. 結果會是兩個 URL：
+1. 跟著 `DEPLOY.md` 走（Render → Vercel → CORS → seed DB → smoke test）
+2. 結果會是兩個 URL：
    - `https://ig-autopilot.vercel.app`（前端）
    - `https://ig-autopilot-api.onrender.com`（後端）
 
@@ -114,7 +105,6 @@ GitHub 會跳出 "Create Pull Request" 頁面，你 review diff、按 Merge → 
 
 | 事 | 為什麼 |
 |---|---|
-| Push 到 `main` | Claude Code 安全策略禁止 — 防止繞過 PR review。你睡醒手動開 PR + merge。 |
 | 真實部署到 Vercel/Render | 要你的帳號登入。`DEPLOY.md` 是手把手教學，30 分鐘可完成。 |
 | 真的測 IG 自動互動 | 沒有測試 IG 帳號 + 真打 IG 有風控風險。`DryRunInstagramClient` 已驗證 sweep 流程正確。 |
 | 用真 Gemini 跑測試 | 不想燒你 quota。Tests 全部用 mock。 |
@@ -168,14 +158,12 @@ npm run dev
 
 # 你的 to-do（按優先序）
 
-1. ✅ Review `phase-2` branch 的 diff（兩個 commit）
-2. ✅ 本地跑一輪確認沒問題（第 6 節）
-3. ✅ 開 PR 把 phase-2 merge 進 main: https://github.com/trevor1018/ig-autopilot/pull/new/phase-2
-4. ✅ 跟 `DEPLOY.md` 走 → Render 部署後端
-5. ✅ 跟 `DEPLOY.md` 走 → Vercel 部署前端
-6. ✅ Smoke test 通過 → 你有公開網址了
-7. ⏳ 跑幾天 dry-run sweep 累積 log
-8. ⏳ Phase 3 真實 content analytics（等資料夠了再回來）
-9. ⏳ 切 LIVE（先用測試帳號，看 `DEPLOY.md` 第 6 節）
+1. ✅ 本地跑一輪確認沒問題（第 6 節）
+2. ⏳ 跟 `DEPLOY.md` 走 → Render 部署後端
+3. ⏳ 跟 `DEPLOY.md` 走 → Vercel 部署前端
+4. ⏳ Smoke test 通過 → 你有公開網址了
+5. ⏳ 跑幾天 dry-run sweep 累積 log
+6. ⏳ Phase 3 真實 content analytics（等資料夠了再回來）
+7. ⏳ 切 LIVE（先用測試帳號，看 `DEPLOY.md` 第 6 節）
 
 晚安變早安啦 🐷
