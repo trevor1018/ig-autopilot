@@ -81,9 +81,9 @@ function Personas() {
                 </div>
                 <button
                   onClick={() => onDelete(p.id)}
-                  className="text-xs text-red-600 hover:underline"
+                  className="text-xs px-2 py-1 rounded bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 inline-flex items-center gap-1"
                 >
-                  刪除
+                  🗑️ 刪除
                 </button>
               </div>
             )}

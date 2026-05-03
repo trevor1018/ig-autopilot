@@ -158,22 +158,22 @@ function Targets() {
                   {t.last_swept_at ? new Date(t.last_swept_at).toLocaleString() : "從未"}
                 </div>
               </div>
-              <div className="flex flex-col gap-1 text-xs">
+              <div className="flex flex-col gap-1.5 text-xs shrink-0">
                 <button
                   onClick={() => toggleActive(t)}
-                  className={`px-2 py-1 rounded ${
+                  className={`px-2 py-1 rounded border ${
                     t.is_active
-                      ? "bg-green-100 text-green-700"
-                      : "bg-slate-100 text-slate-500"
+                      ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                      : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
                   }`}
                 >
                   {t.is_active ? "啟用中" : "已暫停"}
                 </button>
                 <button
                   onClick={() => onDelete(t)}
-                  className="text-red-600 hover:underline"
+                  className="px-2 py-1 rounded bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 flex items-center gap-1 justify-center"
                 >
-                  刪除
+                  🗑️ 刪除
                 </button>
               </div>
             </div>
