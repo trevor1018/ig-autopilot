@@ -13,7 +13,7 @@ function Personas() {
   useEffect(refresh, []);
 
   async function onDelete(id: number) {
-    if (!confirm("Delete this persona?")) return;
+    if (!confirm("確定要刪除這個角色嗎?")) return;
     try {
       await api.deletePersona(id);
       refresh();
@@ -25,9 +25,9 @@ function Personas() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Personas</h2>
+        <h2 className="text-lg font-semibold">角色 (Personas)</h2>
         <span className="text-xs text-slate-400">
-          Phase 1: read-only via UI. Edit through API or seed script.
+          Phase 1：UI 上目前唯讀。要編輯請改用 API 或 seed.py。
         </span>
       </div>
 
@@ -47,7 +47,7 @@ function Personas() {
               <div>
                 <div className="font-semibold">{p.name}</div>
                 <div className="text-xs text-slate-500">
-                  {p.character_name} · {p.tones.join(", ")} · {p.languages.join("/")} · #
+                  {p.character_name} · {p.tones.join("、")} · {p.languages.join("/")} · #
                   {p.required_hashtags.join(" #")}
                 </div>
               </div>
@@ -58,17 +58,17 @@ function Personas() {
             {expanded === p.id && (
               <div className="border-t border-slate-200 p-4 space-y-3 text-sm">
                 <div>
-                  <div className="font-semibold text-slate-700 mb-1">Style notes</div>
+                  <div className="font-semibold text-slate-700 mb-1">風格備註</div>
                   <pre className="whitespace-pre-wrap text-xs bg-slate-50 p-3 rounded">
-                    {p.style_notes || "(none)"}
+                    {p.style_notes || "(無)"}
                   </pre>
                 </div>
                 <div>
                   <div className="font-semibold text-slate-700 mb-1">
-                    Example posts ({p.example_posts.length})
+                    範例貼文 ({p.example_posts.length})
                   </div>
                   {p.example_posts.length === 0 && (
-                    <div className="text-xs text-slate-400">(none)</div>
+                    <div className="text-xs text-slate-400">(無)</div>
                   )}
                   {p.example_posts.map((ex, i) => (
                     <div key={i} className="bg-slate-50 p-3 rounded mb-2 text-xs space-y-1">
@@ -83,7 +83,7 @@ function Personas() {
                   onClick={() => onDelete(p.id)}
                   className="text-xs text-red-600 hover:underline"
                 >
-                  Delete
+                  刪除
                 </button>
               </div>
             )}
@@ -91,8 +91,9 @@ function Personas() {
         ))}
         {rows.length === 0 && (
           <div className="text-sm text-slate-400">
-            No personas yet. Run <code className="bg-slate-100 px-1 rounded">python seed.py</code>{" "}
-            in the backend to insert the 暖暖豬 demo.
+            還沒有角色。在 backend 跑{" "}
+            <code className="bg-slate-100 px-1 rounded">python seed.py</code>{" "}
+            建立暖暖豬 demo 角色。
           </div>
         )}
       </div>

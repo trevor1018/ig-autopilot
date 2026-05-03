@@ -13,6 +13,17 @@ function gaugeColor(used: number, cap: number) {
   return "bg-green-500";
 }
 
+const SWEEP_STATUS_LABELS: Record<string, string> = {
+  completed: "已完成",
+  failed: "失敗",
+  running: "執行中",
+};
+
+const TRIGGER_LABELS: Record<string, string> = {
+  scheduled: "排程",
+  manual: "手動",
+};
+
 function SweepDashboard() {
   const [profiles, setProfiles] = useState<AccountProfile[]>([]);
   const [profileId, setProfileId] = useState<number | "">("");
@@ -61,7 +72,7 @@ function SweepDashboard() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-lg font-semibold">Sweep dashboard</h2>
+        <h2 className="text-lg font-semibold">掃視儀表板</h2>
         <select
           value={profileId}
           onChange={(e) => setProfileId(e.target.value === "" ? "" : Number(e.target.value))}
@@ -78,7 +89,7 @@ function SweepDashboard() {
           disabled={busy || profileId === ""}
           className="bg-brand-500 hover:bg-brand-600 disabled:bg-slate-300 text-white text-sm font-medium px-4 py-1.5 rounded ml-auto"
         >
-          {busy ? "Sweeping..." : "▶ Trigger sweep now"}
+          {busy ? "掃視中..." : "▶ 立刻執行掃視"}
         </button>
       </div>
 
@@ -92,9 +103,9 @@ function SweepDashboard() {
       {quota && (
         <div className="bg-white border border-slate-200 rounded-lg p-5">
           <div className="flex justify-between items-baseline mb-2">
-            <h3 className="font-semibold">Today's quota</h3>
+            <h3 className="font-semibold">今日配額</h3>
             <span className="text-xs text-slate-400">
-              {quota.dry_run ? "🧪 DRY-RUN mode (no real IG actions)" : "🔴 LIVE mode"}
+              {quota.dry_run ? "🧪 DRY-RUN 模式 (不會真的對 IG 動作)" : "🔴 LIVE 模式"}
             </span>
           </div>
           <div className="text-3xl font-bold mb-2">
@@ -108,33 +119,33 @@ function SweepDashboard() {
             />
           </div>
           <div className="text-xs text-slate-500">
-            {quota.remaining} actions remaining · resets in{" "}
-            {Math.floor(quota.seconds_until_reset / 3600)}h{" "}
-            {Math.floor((quota.seconds_until_reset % 3600) / 60)}m
+            還剩 {quota.remaining} 個動作 · 重置時間：
+            {Math.floor(quota.seconds_until_reset / 3600)} 小時{" "}
+            {Math.floor((quota.seconds_until_reset % 3600) / 60)} 分後
           </div>
         </div>
       )}
 
       {/* Recent sweeps */}
       <div>
-        <h3 className="font-semibold mb-2">Recent sweeps</h3>
+        <h3 className="font-semibold mb-2">最近的掃視</h3>
         {sweeps.length === 0 ? (
           <div className="bg-white p-6 rounded-lg border border-dashed border-slate-300 text-center text-slate-400">
-            No sweeps yet. Hit "Trigger sweep now" to test.
+            還沒有掃視紀錄。按「立刻執行掃視」測試看看。
           </div>
         ) : (
           <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-xs text-slate-500">
                 <tr>
-                  <th className="text-left px-3 py-2">Started</th>
-                  <th className="text-left px-3 py-2">Trigger</th>
-                  <th className="text-left px-3 py-2">Status</th>
-                  <th className="text-right px-3 py-2">Targets</th>
-                  <th className="text-right px-3 py-2">New posts</th>
-                  <th className="text-right px-3 py-2">Planned</th>
-                  <th className="text-right px-3 py-2">Skipped</th>
-                  <th className="text-right px-3 py-2">Failed</th>
+                  <th className="text-left px-3 py-2">開始時間</th>
+                  <th className="text-left px-3 py-2">觸發</th>
+                  <th className="text-left px-3 py-2">狀態</th>
+                  <th className="text-right px-3 py-2">對象數</th>
+                  <th className="text-right px-3 py-2">新貼文</th>
+                  <th className="text-right px-3 py-2">已規劃</th>
+                  <th className="text-right px-3 py-2">略過</th>
+                  <th className="text-right px-3 py-2">失敗</th>
                 </tr>
               </thead>
               <tbody>
@@ -143,7 +154,9 @@ function SweepDashboard() {
                     <td className="px-3 py-2 text-xs text-slate-500">
                       {new Date(s.started_at).toLocaleString()}
                     </td>
-                    <td className="px-3 py-2">{s.trigger}</td>
+                    <td className="px-3 py-2">
+                      {TRIGGER_LABELS[s.trigger] ?? s.trigger}
+                    </td>
                     <td className="px-3 py-2">
                       <span
                         className={`text-xs px-2 py-0.5 rounded ${
@@ -154,7 +167,7 @@ function SweepDashboard() {
                               : "bg-blue-100 text-blue-700"
                         }`}
                       >
-                        {s.status}
+                        {SWEEP_STATUS_LABELS[s.status] ?? s.status}
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right">{s.targets_scanned}</td>
@@ -172,8 +185,8 @@ function SweepDashboard() {
 
       {selectedProfile && (
         <div className="text-xs text-slate-400 bg-slate-100 p-3 rounded">
-          Showing data for <code>@{selectedProfile.ig_username}</code>. Scheduled
-          sweeps run automatically per server-side <code>SWEEP_HOURS</code>.
+          目前顯示 <code>@{selectedProfile.ig_username}</code> 的資料。排程掃視會依後端{" "}
+          <code>SWEEP_HOURS</code> 設定自動執行。
         </div>
       )}
     </div>

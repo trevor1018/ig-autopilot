@@ -22,28 +22,28 @@ function App() {
           <h1 className="text-xl font-bold text-brand-600">IG Autopilot</h1>
           <nav className="flex gap-1 flex-wrap">
             <NavLink to="/caption" className={navClass}>
-              Caption Studio
+              文案工作室
             </NavLink>
             <NavLink to="/sweep" className={navClass}>
-              Sweep
+              掃視
             </NavLink>
             <NavLink to="/log" className={navClass}>
-              Log
+              互動紀錄
             </NavLink>
             <NavLink to="/targets" className={navClass}>
-              Targets
+              互動對象
             </NavLink>
             <NavLink to="/analytics" className={navClass}>
-              Analytics
+              分析
             </NavLink>
             <NavLink to="/personas" className={navClass}>
-              Personas
+              角色
             </NavLink>
             <NavLink to="/profiles" className={navClass}>
-              Profiles
+              操作帳號
             </NavLink>
           </nav>
-          <span className="ml-auto text-xs text-slate-400">Phase 2 — auto-interaction</span>
+          <span className="ml-auto text-xs text-slate-400">Phase 2 — 自動互動</span>
         </div>
       </header>
       <main className="max-w-6xl mx-auto px-6 py-8">

@@ -77,7 +77,7 @@ function Targets() {
   }
 
   async function onDelete(t: TargetAccount) {
-    if (!confirm(`Remove @${t.ig_username} from targets?`)) return;
+    if (!confirm(`確定要把 @${t.ig_username} 從互動對象移除?`)) return;
     try {
       await api.deleteTarget(t.id);
       setTargets((prev) => prev.filter((x) => x.id !== t.id));
@@ -90,13 +90,13 @@ function Targets() {
     <div className="grid lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-3">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold">Target accounts</h2>
+          <h2 className="text-lg font-semibold">互動對象 (Targets)</h2>
           <select
             value={profileId}
             onChange={(e) => setProfileId(e.target.value === "" ? "" : Number(e.target.value))}
             className="border border-slate-300 rounded px-2 py-1 text-sm"
           >
-            <option value="">— pick profile —</option>
+            <option value="">— 選擇操作帳號 —</option>
             {profiles.map((p) => (
               <option key={p.id} value={p.id}>
                 @{p.ig_username}
@@ -107,8 +107,8 @@ function Targets() {
 
         {selectedProfile && (
           <div className="text-xs text-slate-500 mb-3">
-            Showing targets for <code>@{selectedProfile.ig_username}</code> ·{" "}
-            {targets.length} total · {targets.filter((t) => t.is_active).length} active
+            顯示 <code>@{selectedProfile.ig_username}</code> 的對象 ·
+            共 {targets.length} 個 · {targets.filter((t) => t.is_active).length} 個啟用中
           </div>
         )}
 
@@ -120,7 +120,7 @@ function Targets() {
 
         {targets.length === 0 && profileId !== "" && (
           <div className="text-sm text-slate-400 bg-white p-4 rounded border border-dashed border-slate-300">
-            No targets yet. Add one →
+            還沒有對象。從右邊加一個 →
           </div>
         )}
 
@@ -150,12 +150,12 @@ function Targets() {
                 )}
                 {t.notes && <div className="text-xs text-slate-500 mt-1">{t.notes}</div>}
                 <div className="text-xs text-slate-400 mt-2">
-                  Max {t.max_actions_per_sweep} action(s)/sweep ·{" "}
+                  每次掃視最多 {t.max_actions_per_sweep} 次動作 ·{" "}
                   {t.like_ratio_override !== null
-                    ? `like ratio override: ${t.like_ratio_override}`
-                    : "default like ratio"}{" "}
-                  · last swept:{" "}
-                  {t.last_swept_at ? new Date(t.last_swept_at).toLocaleString() : "never"}
+                    ? `like 比例覆寫：${t.like_ratio_override}`
+                    : "使用預設 like 比例"}{" "}
+                  · 上次掃視：
+                  {t.last_swept_at ? new Date(t.last_swept_at).toLocaleString() : "從未"}
                 </div>
               </div>
               <div className="flex flex-col gap-1 text-xs">
@@ -167,13 +167,13 @@ function Targets() {
                       : "bg-slate-100 text-slate-500"
                   }`}
                 >
-                  {t.is_active ? "Active" : "Paused"}
+                  {t.is_active ? "啟用中" : "已暫停"}
                 </button>
                 <button
                   onClick={() => onDelete(t)}
                   className="text-red-600 hover:underline"
                 >
-                  Delete
+                  刪除
                 </button>
               </div>
             </div>
@@ -185,9 +185,9 @@ function Targets() {
         onSubmit={onCreate}
         className="bg-white border border-slate-200 rounded-lg p-4 space-y-3 h-fit"
       >
-        <h3 className="font-semibold">Add target</h3>
+        <h3 className="font-semibold">新增互動對象</h3>
         <div>
-          <label className="block text-xs font-medium mb-1">IG username *</label>
+          <label className="block text-xs font-medium mb-1">IG 帳號 *</label>
           <input
             value={igUsername}
             onChange={(e) => setIgUsername(e.target.value)}
@@ -196,7 +196,7 @@ function Targets() {
           />
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1">Display name</label>
+          <label className="block text-xs font-medium mb-1">顯示名稱</label>
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
@@ -205,7 +205,7 @@ function Targets() {
         </div>
         <div>
           <label className="block text-xs font-medium mb-1">
-            Genre tags <span className="text-slate-400">(comma-separated)</span>
+            類型標籤 <span className="text-slate-400">(以逗號分隔)</span>
           </label>
           <input
             value={genreTags}
@@ -215,7 +215,7 @@ function Targets() {
           />
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1">Notes</label>
+          <label className="block text-xs font-medium mb-1">備註</label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -225,7 +225,7 @@ function Targets() {
         </div>
         <div>
           <label className="block text-xs font-medium mb-1">
-            Max actions per sweep
+            每次掃視最多動作數
           </label>
           <input
             type="number"
@@ -241,7 +241,7 @@ function Targets() {
           disabled={busy || profileId === "" || !igUsername.trim()}
           className="w-full bg-brand-500 hover:bg-brand-600 disabled:bg-slate-300 text-white text-sm font-medium py-2 rounded"
         >
-          {busy ? "Saving..." : "Add target"}
+          {busy ? "儲存中..." : "新增對象"}
         </button>
       </form>
     </div>

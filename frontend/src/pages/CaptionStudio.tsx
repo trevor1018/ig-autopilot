@@ -50,7 +50,7 @@ function CaptionStudio() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!personaId || !photo) {
-      setError("Pick a persona and upload a photo first.");
+      setError("請先選擇角色並上傳照片");
       return;
     }
     setLoading(true);
@@ -85,10 +85,10 @@ function CaptionStudio() {
   return (
     <div className="grid lg:grid-cols-2 gap-8">
       <section>
-        <h2 className="text-lg font-semibold mb-4">1. Upload + configure</h2>
+        <h2 className="text-lg font-semibold mb-4">1. 上傳並設定</h2>
         <form onSubmit={onSubmit} className="space-y-4 bg-white p-6 rounded-lg border border-slate-200">
           <div>
-            <label className="block text-sm font-medium mb-1">Persona</label>
+            <label className="block text-sm font-medium mb-1">角色 (Persona)</label>
             <select
               className="w-full border border-slate-300 rounded-md px-3 py-2"
               value={personaId ?? ""}
@@ -102,15 +102,15 @@ function CaptionStudio() {
             </select>
             {selectedPersona && (
               <p className="text-xs text-slate-500 mt-2">
-                Tones: {selectedPersona.tones.join(", ")} · Languages:{" "}
-                {selectedPersona.languages.join(", ")} · Must include #
+                語氣：{selectedPersona.tones.join("、")} · 語言：
+                {selectedPersona.languages.join(", ")} · 必含 #
                 {selectedPersona.required_hashtags.join(" #") || "—"}
               </p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Photo</label>
+            <label className="block text-sm font-medium mb-1">照片</label>
             <input
               type="file"
               accept="image/*"
@@ -124,14 +124,14 @@ function CaptionStudio() {
 
           <div>
             <label className="block text-sm font-medium mb-1">
-              Hint (optional) — extra context the photo alone doesn't tell
+              提示（選填）— 照片看不出來的補充資訊
             </label>
             <textarea
               className="w-full border border-slate-300 rounded-md px-3 py-2"
               rows={3}
               value={userHint}
               onChange={(e) => setUserHint(e.target.value)}
-              placeholder="e.g. 今天暖暖豬第一次去海邊,有點怕水"
+              placeholder="例：今天暖暖豬第一次去海邊,有點怕水"
             />
           </div>
 
@@ -140,7 +140,7 @@ function CaptionStudio() {
             disabled={loading || !photo || !personaId}
             className="w-full bg-brand-500 hover:bg-brand-600 disabled:bg-slate-300 text-white font-medium py-2 rounded-md transition"
           >
-            {loading ? "Generating..." : "Generate caption"}
+            {loading ? "產生中..." : "產生文案"}
           </button>
 
           {error && (
@@ -152,15 +152,15 @@ function CaptionStudio() {
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold mb-4">2. Result</h2>
+        <h2 className="text-lg font-semibold mb-4">2. 結果</h2>
         {!result && !loading && (
           <div className="bg-white p-6 rounded-lg border border-dashed border-slate-300 text-center text-slate-400">
-            Output will appear here.
+            結果會顯示在這。
           </div>
         )}
         {loading && (
           <div className="bg-white p-6 rounded-lg border border-slate-200 text-slate-500">
-            Calling Gemini...
+            正在呼叫 Gemini...
           </div>
         )}
         {result && (
@@ -171,12 +171,12 @@ function CaptionStudio() {
                 copiedAll ? "bg-green-600" : "bg-brand-500 hover:bg-brand-600"
               }`}
             >
-              {copiedAll ? "✓ Copied — paste into IG" : "📋 Copy full post"}
+              {copiedAll ? "✓ 已複製 — 貼到 IG 即可" : "📋 複製完整貼文"}
             </button>
 
             {result.photo_summary && (
               <div className="bg-white p-4 rounded-lg border border-slate-200">
-                <div className="text-xs text-slate-400 mb-1">Photo summary</div>
+                <div className="text-xs text-slate-400 mb-1">照片摘要</div>
                 <div className="text-sm">{result.photo_summary}</div>
               </div>
             )}
@@ -191,7 +191,7 @@ function CaptionStudio() {
                     onClick={() => copy(result.captions[lang])}
                     className="text-xs text-slate-500 hover:text-brand-600"
                   >
-                    Copy
+                    複製
                   </button>
                 </div>
                 <p className="whitespace-pre-wrap text-sm">{result.captions[lang]}</p>
@@ -207,7 +207,7 @@ function CaptionStudio() {
                   onClick={() => copy(result.hashtags.join(" "))}
                   className="text-xs text-slate-500 hover:text-brand-600"
                 >
-                  Copy all
+                  全部複製
                 </button>
               </div>
               <div className="flex flex-wrap gap-2">
