@@ -1,22 +1,27 @@
 import { useEffect, useState } from "react";
-import { Persona, api } from "../api/client";
+import { useUser } from "../lib/auth";
+import { Persona, deletePersona, listPersonas } from "../lib/firestore";
 
 function Personas() {
+  const { user } = useUser();
   const [rows, setRows] = useState<Persona[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  function refresh() {
-    api.listPersonas().then(setRows).catch((e) => setError(String(e)));
-  }
+  useEffect(() => {
+    if (!user) return;
+    listPersonas(user.uid)
+      .then(setRows)
+      .catch((e) => setError(String(e)));
+  }, [user, refreshKey]);
 
-  useEffect(refresh, []);
-
-  async function onDelete(id: number) {
+  async function onDelete(id: string) {
+    if (!user) return;
     if (!confirm("確定要刪除這個角色嗎?")) return;
     try {
-      await api.deletePersona(id);
-      refresh();
+      await deletePersona(user.uid, id);
+      setRefreshKey((k) => k + 1);
     } catch (e) {
       setError(String(e));
     }
@@ -27,7 +32,7 @@ function Personas() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">角色 (Personas)</h2>
         <span className="text-xs text-slate-400">
-          Phase 1：UI 上目前唯讀。要編輯請改用 API 或 seed.py。
+          目前 UI 唯讀。要新增 / 編輯角色請告訴我,我做給你。
         </span>
       </div>
 
@@ -91,9 +96,7 @@ function Personas() {
         ))}
         {rows.length === 0 && (
           <div className="text-sm text-slate-400">
-            還沒有角色。在 backend 跑{" "}
-            <code className="bg-slate-100 px-1 rounded">python seed.py</code>{" "}
-            建立暖暖豬 demo 角色。
+            還沒有角色。重新整理一次,系統會自動為你建立預設「暖暖豬」。
           </div>
         )}
       </div>

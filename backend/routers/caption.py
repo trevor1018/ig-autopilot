@@ -3,8 +3,19 @@ from sqlalchemy.orm import Session
 
 from core.db import get_db
 from models.persona import Persona
-from schemas.caption import CaptionResponse, CaptionVersion
-from services.caption_generator import generate_caption
+from schemas.caption import (
+    CaptionResponse,
+    CaptionVersion,
+    HashtagsRequest,
+    HashtagsResponse,
+    TranslateRequest,
+    TranslateResponse,
+)
+from services.caption_generator import (
+    generate_caption,
+    regenerate_hashtags,
+    translate_caption,
+)
 
 router = APIRouter(prefix="/caption", tags=["caption"])
 
@@ -67,3 +78,33 @@ async def generate(
         input_tokens=result["input_tokens"],
         output_tokens=result["output_tokens"],
     )
+
+
+@router.post("/translate", response_model=TranslateResponse)
+def translate(payload: TranslateRequest, db: Session = Depends(get_db)):
+    """Re-translate user-edited zh text to ja+en (no image, fast)."""
+    persona = db.get(Persona, payload.persona_id)
+    if not persona:
+        raise HTTPException(404, f"Persona {payload.persona_id} not found")
+
+    try:
+        result = translate_caption(persona=persona, zh_text=payload.zh_text)
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+
+    return TranslateResponse(**result)
+
+
+@router.post("/hashtags", response_model=HashtagsResponse)
+def hashtags(payload: HashtagsRequest, db: Session = Depends(get_db)):
+    """Regenerate hashtags from current zh text + persona rules."""
+    persona = db.get(Persona, payload.persona_id)
+    if not persona:
+        raise HTTPException(404, f"Persona {payload.persona_id} not found")
+
+    try:
+        tags = regenerate_hashtags(persona=persona, zh_text=payload.zh_text)
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+
+    return HashtagsResponse(hashtags=tags)

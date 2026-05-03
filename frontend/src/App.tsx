@@ -1,19 +1,38 @@
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
-import Analytics from "./pages/Analytics";
+import { useUser } from "./lib/auth";
 import CaptionStudio from "./pages/CaptionStudio";
-import InteractionLogPage from "./pages/InteractionLogPage";
+import History from "./pages/History";
+import ImageStudio from "./pages/ImageStudio";
+import Login from "./pages/Login";
 import Personas from "./pages/Personas";
-import Profiles from "./pages/Profiles";
-import SweepDashboard from "./pages/SweepDashboard";
-import Targets from "./pages/Targets";
+import Settings from "./pages/Settings";
 
 function App() {
+  const { user, loading } = useUser();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-slate-400">
+        載入中...
+      </div>
+    );
+  }
+  if (!user) return <Login />;
+
   const navClass = ({ isActive }: { isActive: boolean }) =>
     `px-3 py-2 rounded-md text-sm font-medium transition ${
       isActive
         ? "bg-brand-500 text-white"
         : "text-slate-600 hover:bg-brand-50 hover:text-brand-700"
     }`;
+
+  const avatar = user.photoURL ? (
+    <img src={user.photoURL} alt={user.displayName ?? ""} className="w-8 h-8 rounded-full" />
+  ) : (
+    <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold">
+      {(user.displayName ?? user.email ?? "?").charAt(0).toUpperCase()}
+    </div>
+  );
 
   return (
     <div className="min-h-full">
@@ -24,38 +43,32 @@ function App() {
             <NavLink to="/caption" className={navClass}>
               文案工作室
             </NavLink>
-            <NavLink to="/sweep" className={navClass}>
-              掃視
+            <NavLink to="/image" className={navClass}>
+              製圖工作室
             </NavLink>
-            <NavLink to="/log" className={navClass}>
-              互動紀錄
-            </NavLink>
-            <NavLink to="/targets" className={navClass}>
-              互動對象
-            </NavLink>
-            <NavLink to="/analytics" className={navClass}>
-              分析
+            <NavLink to="/history" className={navClass}>
+              歷史紀錄
             </NavLink>
             <NavLink to="/personas" className={navClass}>
               角色
             </NavLink>
-            <NavLink to="/profiles" className={navClass}>
-              操作帳號
+            <NavLink to="/settings" className={navClass}>
+              設定
             </NavLink>
           </nav>
-          <span className="ml-auto text-xs text-slate-400">Phase 2 — 自動互動</span>
+          <NavLink to="/settings" className="ml-auto" title={user.email ?? ""}>
+            {avatar}
+          </NavLink>
         </div>
       </header>
       <main className="max-w-6xl mx-auto px-6 py-8">
         <Routes>
           <Route path="/" element={<Navigate to="/caption" replace />} />
           <Route path="/caption" element={<CaptionStudio />} />
-          <Route path="/sweep" element={<SweepDashboard />} />
-          <Route path="/log" element={<InteractionLogPage />} />
-          <Route path="/targets" element={<Targets />} />
-          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/image" element={<ImageStudio />} />
+          <Route path="/history" element={<History />} />
           <Route path="/personas" element={<Personas />} />
-          <Route path="/profiles" element={<Profiles />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
     </div>

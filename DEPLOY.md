@@ -1,136 +1,95 @@
-# Deployment Guide
+# Deploy to GitHub Pages
 
-This guide takes you from "works on my laptop" → "real public URLs".
+Architecture: pure static frontend → GitHub Pages → Firebase (Auth + Firestore) → Gemini API.
+No backend server. Free forever. Same setup as `mlb-tracker`.
 
-> **Prerequisite check before starting:**
-> - [ ] You have a Google account (for Vercel) and email (for Render) ready
-> - [ ] Your `GEMINI_API_KEY` is in hand (you already have one — same one as `.env` locally)
-
-The hybrid architecture:
-- **Frontend** (static React build) → **Vercel** (free tier)
-- **Backend** (FastAPI + SQLite) → **Render** (free tier)
-- Frontend `fetch()` calls go from `*.vercel.app` → `*.onrender.com` → Gemini
-
-## Time budget
-
-About 30 minutes if nothing goes wrong. Most time is waiting for builds.
+Live URL: https://trevor1018.github.io/ig-autopilot/
 
 ---
 
-## Step 1 — Deploy the backend to Render
+## One-time setup
 
-1. Go to https://render.com → sign up with GitHub.
-2. Top-right **+ New** → **Blueprint**.
-3. Connect to the `trevor1018/ig-autopilot` repo.
-4. Render auto-detects `render.yaml` at the root and shows one service: `ig-autopilot-api`.
-5. Click **Apply**. Render starts building (3–5 min).
-6. While it builds, click into the service → **Environment** tab → set:
+### 1. Allow `trevor1018.github.io` in Firebase
 
-   | Key | Value |
-   |---|---|
-   | `GEMINI_API_KEY` | your real key (same as in local `.env`) |
-   | `CORS_ORIGINS` | leave empty for now — we'll fill in after frontend deploys |
+Firebase Auth blocks logins from unknown domains. Add the GitHub Pages domain:
 
-   `IG_DRY_RUN`, `SWEEP_HOURS`, `DAILY_ACTION_CAP` etc. are pre-filled from `render.yaml`.
+1. Open https://console.firebase.google.com → project `ig-autopilot`
+2. Left menu → **Authentication** → **Settings** tab → **Authorized domains**
+3. **Add domain** → `trevor1018.github.io` → Save
 
-7. Wait for build to finish → status shows **Live**. Copy the URL — looks like
-   `https://ig-autopilot-api.onrender.com`.
+### 2. Enable GitHub Pages with Actions as the source
 
-8. Smoke test: open `https://ig-autopilot-api.onrender.com/health` in a browser.
-   You should see:
-   ```json
-   {"status":"ok","model":"gemini-2.5-flash","ig_dry_run":true,"sweep_hours_utc":[0,8,16]}
-   ```
+1. Open https://github.com/trevor1018/ig-autopilot
+2. **Settings** tab → **Pages** (left sidebar)
+3. **Build and deployment** → **Source** → select **GitHub Actions**
 
-> **Free tier notes:**
-> - Service sleeps after 15 min idle. First request after sleep takes ~30s to wake.
-> - Sleeping kills APScheduler — auto-sweeps will only fire when the service happens to be awake. Upgrade to paid Starter ($7/mo) when you actually want 24/7 sweeps.
+That's it for the manual setup.
 
 ---
 
-## Step 2 — Deploy the frontend to Vercel
+## Auto-deploy flow
 
-1. Go to https://vercel.com → sign up with GitHub.
-2. **Add New** → **Project** → select `trevor1018/ig-autopilot`.
-3. Configuration screen:
-   - **Root Directory** → click Edit → set to `frontend`
-   - **Framework Preset** → Vite (auto-detected)
-   - **Build / Install commands** → defaults are fine (`vercel.json` covers it)
-   - **Environment Variables**:
-     - Key: `VITE_API_BASE_URL`
-     - Value: the Render URL from Step 1 (e.g. `https://ig-autopilot-api.onrender.com`)
-4. **Deploy** → wait 1-2 min → done.
-5. Copy the URL — looks like `https://ig-autopilot.vercel.app`.
+Every push to `main` triggers `.github/workflows/deploy.yml`:
 
----
+```
+push to main  →  GitHub Actions  →  npm ci + npm run build  →  GitHub Pages
+                                    (in frontend/)            (~1-2 min)
+```
 
-## Step 3 — Wire CORS
+After the workflow completes, the new build is live at the URL above.
 
-The backend rejects calls from origins not in `CORS_ORIGINS`. Now that we know the Vercel URL:
-
-1. Render dashboard → `ig-autopilot-api` → **Environment** → add/edit:
-   ```
-   CORS_ORIGINS = https://ig-autopilot.vercel.app,http://localhost:5173
-   ```
-   (Keep `localhost` so you can also dev locally against the production backend.)
-2. Render auto-redeploys after env var change (~30 sec).
+You can also trigger a deploy manually: **Actions** tab → **Deploy to GitHub Pages** → **Run workflow**.
 
 ---
 
-## Step 4 — Seed the production DB
+## Local development
 
-The Render disk is empty — no Personas, no Profiles. Run the seed script once:
+`npm run dev` still works with `base: '/'` (Vite config picks dev vs build automatically).
 
-1. Render dashboard → `ig-autopilot-api` → **Shell** tab.
-2. Run:
-   ```bash
-   python seed.py
-   ```
-3. Output should match the local seed:
-   ```
-   Created Persona: 暖暖豬 (id=1)
-   Created AccountProfile: nuannuanzhu_demo (id=1)
-   ```
+```bash
+cd frontend
+npm install      # first time
+npm run dev      # http://localhost:5173/
+```
 
----
-
-## Step 5 — End-to-end smoke test
-
-1. Open `https://ig-autopilot.vercel.app/`.
-2. **Caption Studio** — should load 暖暖豬 persona in the dropdown.
-3. Upload a photo → Generate → ZH/JA/EN copy + 5 hashtags appear.
-4. **Sweep** page → quota gauge shows 0 / 120, mode = 🧪 DRY-RUN.
-5. **Targets** → add a fake target (e.g. `pikachu_official`).
-6. **Sweep** → click **▶ Trigger sweep now**.
-7. **Log** page → see one new "like" or "comment" entry with status=executed, DRY badge.
-
-If all 7 work → you're live. ✅
+For the local app to work end-to-end you also need:
+- A Gemini API key set in **設定** page (stored in your Firestore, only readable by your account)
+- `localhost` is already in Firebase's authorized domains by default
 
 ---
 
-## Going from DRY-RUN to LIVE (when you're ready, not now)
+## Build verification before push
 
-⚠️ This is where IG bans actually happen. Read carefully.
+Optional but useful — make sure the production bundle compiles:
 
-1. Use a **test IG account**, not your main 暖暖豬 account, for the first 2 weeks.
-2. On Render → set:
-   ```
-   IG_DRY_RUN = false
-   IG_USERNAME = your_test_account
-   IG_PASSWORD = ...
-   ```
-3. Lower `DAILY_ACTION_CAP` to ~50 for the first week.
-4. Watch the Log page daily. Any "failed" with rate-limit-style errors → pause immediately.
-5. Once you have 1 week of clean operation on the test account, switch to the real account.
+```bash
+cd frontend
+npm run build
+npm run preview   # serves dist/ at http://localhost:4173/ig-autopilot/
+```
+
+If `preview` works, the GitHub Pages deploy will also work.
 
 ---
 
-## Cost summary
+## What's hosted where
 
-- Render free tier: $0/mo, sleeps after idle, scheduler runs only when awake
-- Vercel free: $0/mo for personal projects, no limits relevant to your scale
-- Gemini Flash free: 250 RPD, ~enough for 1-3 sweeps × 5 targets × 10% comment rate per day
+| Thing | Hosted at | Cost |
+|---|---|---|
+| Frontend (HTML/JS/CSS) | GitHub Pages | $0 |
+| Auth (Google sign-in) | Firebase Auth | $0 |
+| User data (personas, captions, image history) | Firestore | $0 (1 GB free) |
+| Image generation / editing | Gemini API (your own key) | $0 (free tier) |
+| Backend server | None — there is no backend | $0 |
 
-When you're ready for 24/7 sweeps:
-- Render Starter $7/mo → no sleeping
-- Total: $7/mo
+---
+
+## Going from this to having other people use it
+
+Each user signs in with their own Google account, gets their own isolated Firestore data, and uses their own Gemini API key. Nothing to share, nothing to coordinate — just send them the URL.
+
+Caveat: while the Firebase OAuth consent screen is in **Test mode**, only emails listed under **Test users** in Google Cloud Console can sign in. To open it up to anyone:
+
+1. Open https://console.cloud.google.com → your auth project → **APIs & Services** → **OAuth consent screen**
+2. **Publishing status** → **PUBLISH APP**
+3. (Google may ask for verification depending on scopes — for plain `email` + `profile` scopes it's usually instant)

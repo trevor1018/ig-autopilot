@@ -1,7 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
-import { CaptionResponse, Persona, api } from "../api/client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useUser } from "../lib/auth";
+import {
+  Persona,
+  ensureDefaultPersona,
+  getApiKey,
+  listPersonas,
+  saveCaptionHistory,
+} from "../lib/firestore";
+import {
+  CaptionApiPhoto,
+  CaptionResult,
+  generateCaption,
+  regenerateHashtags,
+  translateCaption,
+} from "../lib/gemini";
+import { compressToJpeg } from "../lib/image-utils";
 
 const MAX_PHOTOS = 10;
+const TRANSLATE_DEBOUNCE_MS = 1500;
 
 function formatFullPost(
   captions: { zh: string; ja: string; en: string },
@@ -14,25 +30,40 @@ function formatFullPost(
 }
 
 function CaptionStudio() {
+  const { user } = useUser();
   const [personas, setPersonas] = useState<Persona[]>([]);
-  const [personaId, setPersonaId] = useState<number | null>(null);
+  const [personaId, setPersonaId] = useState<string | null>(null);
   const [photos, setPhotos] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [userHint, setUserHint] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<CaptionResponse | null>(null);
+  const [result, setResult] = useState<CaptionResult | null>(null);
+  const [savedToHistory, setSavedToHistory] = useState(false);
   const [copiedAll, setCopiedAll] = useState(false);
 
+  // Editable state
+  const [editableZh, setEditableZh] = useState("");
+  const [translatedJa, setTranslatedJa] = useState("");
+  const [translatedEn, setTranslatedEn] = useState("");
+  const [editableHashtags, setEditableHashtags] = useState<string[]>([]);
+  const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+  const [regeneratingTags, setRegeneratingTags] = useState(false);
+  const [hashtagSyncedZh, setHashtagSyncedZh] = useState("");
+  const lastTranslatedZh = useRef<string>("");
+
+  // Load personas (auto-seed default 暖暖豬 if none exist)
   useEffect(() => {
-    api
-      .listPersonas()
+    if (!user) return;
+    ensureDefaultPersona(user.uid)
+      .then(() => listPersonas(user.uid))
       .then((rows) => {
         setPersonas(rows);
         if (rows.length > 0) setPersonaId(rows[0].id);
       })
       .catch((e) => setError(String(e)));
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (photos.length === 0) {
@@ -44,10 +75,53 @@ function CaptionStudio() {
     return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, [photos]);
 
+  useEffect(() => {
+    if (!result) return;
+    setEditableZh(result.captions.zh);
+    setTranslatedJa(result.captions.ja);
+    setTranslatedEn(result.captions.en);
+    setEditableHashtags(result.hashtags);
+    setHashtagSyncedZh(result.captions.zh);
+    setTranslateError(null);
+    lastTranslatedZh.current = result.captions.zh;
+  }, [result]);
+
+  // Debounced auto-translate
+  useEffect(() => {
+    if (!result || !personaId || !user) return;
+    if (!editableZh.trim()) return;
+    if (editableZh === lastTranslatedZh.current) return;
+
+    const timer = setTimeout(async () => {
+      const persona = personas.find((p) => p.id === personaId);
+      if (!persona) return;
+      const apiKey = await getApiKey(user.uid);
+      if (!apiKey) {
+        setTranslateError("Gemini API key 未設定 — 去「設定」頁加。");
+        return;
+      }
+      setTranslating(true);
+      setTranslateError(null);
+      try {
+        const r = await translateCaption(persona, editableZh, apiKey);
+        setTranslatedJa(r.ja);
+        setTranslatedEn(r.en);
+        lastTranslatedZh.current = editableZh;
+      } catch (e) {
+        setTranslateError(String(e));
+      } finally {
+        setTranslating(false);
+      }
+    }, TRANSLATE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [editableZh, result, personaId, user, personas]);
+
   const selectedPersona = useMemo(
     () => personas.find((p) => p.id === personaId) ?? null,
     [personas, personaId],
   );
+
+  const hashtagsOutOfSync = result !== null && hashtagSyncedZh !== editableZh;
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const picked = Array.from(e.target.files ?? []);
@@ -59,7 +133,6 @@ function CaptionStudio() {
       setError(null);
       setPhotos(picked);
     }
-    // Allow re-picking the same files later (e.g. after removing one)
     e.target.value = "";
   }
 
@@ -73,20 +146,78 @@ function CaptionStudio() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!personaId || photos.length === 0) {
+    if (!user || !personaId || photos.length === 0) {
       setError("請先選擇角色並上傳至少一張照片");
+      return;
+    }
+    const persona = personas.find((p) => p.id === personaId);
+    if (!persona) {
+      setError("找不到選定的角色");
       return;
     }
     setLoading(true);
     setError(null);
     setResult(null);
+    setSavedToHistory(false);
+
     try {
-      const res = await api.generateCaption(personaId, photos, userHint);
+      const apiKey = await getApiKey(user.uid);
+      if (!apiKey) {
+        throw new Error("Gemini API key 未設定 — 去「設定」頁加。");
+      }
+
+      // Compress all photos for the Gemini call (smaller payload, faster)
+      const compressed: CaptionApiPhoto[] = [];
+      for (const f of photos) {
+        const c = await compressToJpeg(f, 1280, 0.82);
+        compressed.push({ base64: c.base64, mimeType: c.mimeType });
+      }
+
+      const res = await generateCaption(persona, compressed, userHint, apiKey);
       setResult(res);
+
+      // Auto-save to history (with thumbnail of first photo)
+      try {
+        const thumb = await compressToJpeg(photos[0], 256, 0.7);
+        await saveCaptionHistory(user.uid, {
+          persona_id: persona.id,
+          persona_name: persona.name,
+          user_hint: userHint,
+          photo_count: photos.length,
+          photo_thumbnail: thumb.base64,
+          captions: res.captions,
+          hashtags: res.hashtags,
+          photo_summary: res.photo_summary,
+          created_at: Date.now(),
+        });
+        setSavedToHistory(true);
+      } catch (saveErr) {
+        // Non-fatal — caption generation succeeded, just log save failure
+        console.warn("History save failed:", saveErr);
+      }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onRegenerateHashtags() {
+    if (!user || !personaId || !editableZh.trim()) return;
+    const persona = personas.find((p) => p.id === personaId);
+    if (!persona) return;
+    setRegeneratingTags(true);
+    setTranslateError(null);
+    try {
+      const apiKey = await getApiKey(user.uid);
+      if (!apiKey) throw new Error("Gemini API key 未設定");
+      const tags = await regenerateHashtags(persona, editableZh, apiKey);
+      setEditableHashtags(tags);
+      setHashtagSyncedZh(editableZh);
+    } catch (e) {
+      setTranslateError(String(e));
+    } finally {
+      setRegeneratingTags(false);
     }
   }
 
@@ -96,7 +227,10 @@ function CaptionStudio() {
 
   function copyFullPost() {
     if (!result) return;
-    const text = formatFullPost(result.captions, result.hashtags);
+    const text = formatFullPost(
+      { zh: editableZh, ja: translatedJa, en: translatedEn },
+      editableHashtags,
+    );
     navigator.clipboard.writeText(text).then(
       () => {
         setCopiedAll(true);
@@ -109,14 +243,14 @@ function CaptionStudio() {
   return (
     <div className="grid lg:grid-cols-2 gap-8">
       <section>
-        <h2 className="text-lg font-semibold mb-4">1. 上傳並設定</h2>
+        <h2 className="text-lg font-semibold mb-4">上傳並設定</h2>
         <form onSubmit={onSubmit} className="space-y-4 bg-white p-6 rounded-lg border border-slate-200">
           <div>
             <label className="block text-sm font-medium mb-1">角色 (Persona)</label>
             <select
               className="w-full border border-slate-300 rounded-md px-3 py-2"
               value={personaId ?? ""}
-              onChange={(e) => setPersonaId(Number(e.target.value))}
+              onChange={(e) => setPersonaId(e.target.value)}
             >
               {personas.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -126,7 +260,7 @@ function CaptionStudio() {
             </select>
             {selectedPersona && (
               <p className="text-xs text-slate-500 mt-2">
-                語氣：{selectedPersona.tones.join("、")} · 語言：
+                語氣:{selectedPersona.tones.join("、")} · 語言:
                 {selectedPersona.languages.join(", ")} · 必含 #
                 {selectedPersona.required_hashtags.join(" #") || "—"}
               </p>
@@ -202,7 +336,7 @@ function CaptionStudio() {
               rows={3}
               value={userHint}
               onChange={(e) => setUserHint(e.target.value)}
-              placeholder="例：今天暖暖豬第一次去海邊,有點怕水"
+              placeholder="例:今天暖暖豬第一次去海邊,有點怕水"
             />
           </div>
 
@@ -227,7 +361,7 @@ function CaptionStudio() {
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold mb-4">2. 結果</h2>
+        <h2 className="text-lg font-semibold mb-4">結果</h2>
         {!result && !loading && (
           <div className="bg-white p-6 rounded-lg border border-dashed border-slate-300 text-center text-slate-400">
             結果會顯示在這。
@@ -249,6 +383,12 @@ function CaptionStudio() {
               {copiedAll ? "✓ 已複製 — 貼到 IG 即可" : "📋 複製完整貼文"}
             </button>
 
+            {savedToHistory && (
+              <div className="text-xs text-green-700 bg-green-50 border border-green-200 p-2 rounded">
+                ✓ 已自動儲存到歷史紀錄
+              </div>
+            )}
+
             {result.photo_summary && (
               <div className="bg-white p-4 rounded-lg border border-slate-200">
                 <div className="text-xs text-slate-400 mb-1">
@@ -258,37 +398,119 @@ function CaptionStudio() {
               </div>
             )}
 
-            {(["zh", "ja", "en"] as const).map((lang) => (
-              <div key={lang} className="bg-white p-4 rounded-lg border border-slate-200">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs uppercase tracking-wide font-semibold text-brand-600">
-                    {lang}
-                  </span>
-                  <button
-                    onClick={() => copy(result.captions[lang])}
-                    className="text-xs text-slate-500 hover:text-brand-600"
-                  >
-                    複製
-                  </button>
-                </div>
-                <p className="whitespace-pre-wrap text-sm">{result.captions[lang]}</p>
+            {translateError && (
+              <div className="text-xs text-red-600 bg-red-50 border border-red-200 p-2 rounded">
+                ⚠️ 翻譯/重產失敗：{translateError}
               </div>
-            ))}
+            )}
 
             <div className="bg-white p-4 rounded-lg border border-slate-200">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs uppercase tracking-wide font-semibold text-brand-600">
-                  Hashtags ({result.hashtags.length})
+                  ZH{" "}
+                  <span className="normal-case font-normal text-slate-400">
+                    (可編輯,1.5 秒後自動翻譯 JA / EN)
+                  </span>
                 </span>
                 <button
-                  onClick={() => copy(result.hashtags.join(" "))}
+                  onClick={() => copy(editableZh)}
                   className="text-xs text-slate-500 hover:text-brand-600"
                 >
-                  全部複製
+                  複製
                 </button>
               </div>
+              <textarea
+                value={editableZh}
+                onChange={(e) => setEditableZh(e.target.value)}
+                rows={Math.max(3, editableZh.split("\n").length + 1)}
+                className="w-full text-sm bg-slate-50 border border-slate-200 rounded p-2 focus:outline-none focus:ring-2 focus:ring-brand-300 focus:bg-white whitespace-pre-wrap font-sans"
+              />
+            </div>
+
+            <div className="bg-white p-4 rounded-lg border border-slate-200">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs uppercase tracking-wide font-semibold text-brand-600">
+                  JA
+                  {translating && (
+                    <span className="ml-2 normal-case font-normal text-amber-600">
+                      ⏳ 翻譯中...
+                    </span>
+                  )}
+                </span>
+                <button
+                  onClick={() => copy(translatedJa)}
+                  className="text-xs text-slate-500 hover:text-brand-600"
+                >
+                  複製
+                </button>
+              </div>
+              <p
+                className={`whitespace-pre-wrap text-sm transition-opacity ${
+                  translating ? "opacity-40" : ""
+                }`}
+              >
+                {translatedJa}
+              </p>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg border border-slate-200">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs uppercase tracking-wide font-semibold text-brand-600">
+                  EN
+                  {translating && (
+                    <span className="ml-2 normal-case font-normal text-amber-600">
+                      ⏳ Translating...
+                    </span>
+                  )}
+                </span>
+                <button
+                  onClick={() => copy(translatedEn)}
+                  className="text-xs text-slate-500 hover:text-brand-600"
+                >
+                  複製
+                </button>
+              </div>
+              <p
+                className={`whitespace-pre-wrap text-sm transition-opacity ${
+                  translating ? "opacity-40" : ""
+                }`}
+              >
+                {translatedEn}
+              </p>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg border border-slate-200">
+              <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
+                <span className="text-xs uppercase tracking-wide font-semibold text-brand-600">
+                  Hashtags ({editableHashtags.length})
+                  {hashtagsOutOfSync && (
+                    <span className="ml-2 normal-case font-normal text-amber-600">
+                      ⚠️ 中文已修改,可重新產生
+                    </span>
+                  )}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={onRegenerateHashtags}
+                    disabled={regeneratingTags || !editableZh.trim()}
+                    className={`text-xs px-2 py-1 rounded border ${
+                      hashtagsOutOfSync
+                        ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                        : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                    } disabled:opacity-50`}
+                  >
+                    {regeneratingTags ? "產生中..." : "🔄 根據中文重產"}
+                  </button>
+                  <button
+                    onClick={() => copy(editableHashtags.join(" "))}
+                    className="text-xs text-slate-500 hover:text-brand-600"
+                  >
+                    全部複製
+                  </button>
+                </div>
+              </div>
               <div className="flex flex-wrap gap-2">
-                {result.hashtags.map((h, i) => (
+                {editableHashtags.map((h, i) => (
                   <span
                     key={i}
                     className="text-sm bg-brand-50 text-brand-700 px-2 py-1 rounded"
@@ -300,8 +522,7 @@ function CaptionStudio() {
             </div>
 
             <div className="text-xs text-slate-400 bg-slate-100 p-3 rounded">
-              tokens · in: {result.input_tokens} · out: {result.output_tokens} · cache read:{" "}
-              {result.cache_read_tokens} · cache write: {result.cache_creation_tokens}
+              tokens · in: {result.input_tokens} · out: {result.output_tokens}
             </div>
           </div>
         )}

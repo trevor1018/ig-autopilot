@@ -1,28 +1,20 @@
-# IG Autopilot
+# IG Autopilot — Content Studio
 
-A web tool for analyzing and managing Instagram accounts via persona-driven automation.
+A persona-driven content creation tool for Instagram. Currently focused on caption generation; image studio in development.
 
-> ⚠️ **Public repo notice** — never commit Instagram credentials, session cookies, or API keys. Everything sensitive belongs in `.env` (already gitignored). See `.env.example` for the full list of expected variables.
-
----
-
-## Phase 1 (current) — Caption Studio
-
-What's in scope:
-
-- **AccountProfile** — one row per IG account you operate. Holds the persona reference and (later) credentials.
-- **Persona** — character config (name, tone, languages, required hashtags, few-shot examples). Drives caption generation. Default seed: `暖暖豬`.
-- **Caption Studio** — upload a photo, pick a persona, get back ZH/JA/EN copy + 5 hashtags. Powered by Gemini 2.5 Pro (free tier). The persona spec is sent as `system_instruction` on every call, so the model never forgets the setup the way a chat session would.
-
-What's NOT in scope yet (Phase 2+):
-
-- Auto-interaction sweeps (3x/day like/comment)
-- Interaction logs
-- Post analytics / engagement dashboards
-- A/B caption testing
-- IG API integration (instagrapi)
+> ⚠️ **Public repo notice** — never commit Gemini API keys or any other secrets. Everything sensitive belongs in `.env` (already gitignored). See `.env.example` for the full list of expected variables.
 
 ---
+
+## What this is
+
+- **文案工作室 (Caption Studio)** — Upload photos (single or multi-photo carousel), pick a persona, get back ZH/JA/EN copy + 5 hashtags. Powered by Gemini 2.5 Flash with the persona spec sent as `system_instruction` on every call, so it never "forgets" the setup the way a chat session does.
+- **角色 (Personas)** — Character configs that drive caption generation. Each persona has a name, POV, tones, languages, required hashtags, style notes, and few-shot example posts. Default seed: `暖暖豬`.
+
+## What's coming next
+
+- **製圖工作室 (Image Studio)** — Image editing / styling tools (in design)
+- **Caption enhancements** — A/B variants, history, persona editing UI
 
 ## Stack
 
@@ -30,7 +22,7 @@ What's NOT in scope yet (Phase 2+):
 |---|---|
 | Backend | FastAPI + SQLAlchemy + SQLite |
 | Frontend | Vite + React + TypeScript + Tailwind |
-| LLM | Gemini 2.5 Pro (Google AI Studio free tier, `google-genai` SDK) |
+| LLM | Gemini 2.5 Flash (Google AI Studio free tier, `google-genai` SDK) |
 
 ---
 
@@ -54,7 +46,7 @@ python seed.py                  # creates DB + 暖暖豬 demo persona
 uvicorn main:app --reload --port 8000
 ```
 
-API docs available at http://localhost:8000/docs
+API docs at http://localhost:8000/docs
 
 ### 3. Frontend
 
@@ -75,22 +67,15 @@ ig-autopilot/
 ├── backend/
 │   ├── main.py                 FastAPI entrypoint
 │   ├── core/                   config, db
-│   ├── models/                 SQLAlchemy: AccountProfile, Persona
+│   ├── models/persona.py       Persona model (sole table)
 │   ├── schemas/                Pydantic request/response schemas
-│   ├── routers/                profiles, personas, caption
+│   ├── routers/                personas, caption
 │   ├── services/
 │   │   └── caption_generator.py   Gemini API + system_instruction + vision
 │   └── seed.py                 inserts 暖暖豬 demo persona
 └── frontend/
     └── src/
-        ├── pages/              Profiles, Personas, CaptionStudio
-        ├── components/         Layout, shared UI
+        ├── pages/              CaptionStudio, Personas
+        ├── components/
         └── api/                typed client
 ```
-
----
-
-## Roadmap
-
-- **Phase 2** — Auto-interaction (APScheduler 3x/day), interaction log, SafetyGuard
-- **Phase 3** — Post analytics, A/B captions, hashtag tracker, persona version history

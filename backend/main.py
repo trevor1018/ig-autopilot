@@ -6,10 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
 from core.db import Base, engine
-from routers import analytics, caption, interactions, personas, profiles, sweeps, targets
+from routers import caption, image, personas
 
 import models  # noqa: F401  (registers models on Base.metadata)
-from services import scheduler as scheduler_service
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -18,14 +17,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    scheduler_service.start_scheduler()
-    try:
-        yield
-    finally:
-        scheduler_service.stop_scheduler()
+    yield
 
 
-app = FastAPI(title="IG Autopilot API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="IG Autopilot — Content Studio", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,20 +33,9 @@ app.add_middleware(
 
 @app.get("/health")
 def health() -> dict:
-    return {
-        "status": "ok",
-        "model": settings.gemini_model,
-        "mode": settings.current_mode,
-        "ig_dry_run": settings.ig_dry_run,
-        "ig_read_only": settings.ig_read_only,
-        "sweep_hours_utc": settings.sweep_hour_list,
-    }
+    return {"status": "ok", "model": settings.gemini_model}
 
 
 app.include_router(personas.router)
-app.include_router(profiles.router)
 app.include_router(caption.router)
-app.include_router(targets.router)
-app.include_router(interactions.router)
-app.include_router(sweeps.router)
-app.include_router(analytics.router)
+app.include_router(image.router)

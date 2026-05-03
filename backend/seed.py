@@ -1,4 +1,4 @@
-"""Seed the database with the 暖暖豬 demo Persona and a sample AccountProfile.
+"""Seed the database with the 暖暖豬 demo Persona.
 
 Idempotent — safe to run multiple times.
 
@@ -7,7 +7,6 @@ Idempotent — safe to run multiple times.
 """
 
 from core.db import Base, SessionLocal, engine
-from models.account_profile import AccountProfile
 from models.persona import Persona
 
 import models  # noqa: F401
@@ -60,24 +59,6 @@ def seed():
             db.commit()
             db.refresh(persona)
             print(f"  Created Persona: {persona.name} (id={persona.id})")
-
-        sample_username = "nuannuanzhu_demo"
-        profile = (
-            db.query(AccountProfile).filter(AccountProfile.ig_username == sample_username).first()
-        )
-        if profile:
-            print(f"  Profile '{sample_username}' already exists (id={profile.id}), skipping.")
-        else:
-            profile = AccountProfile(
-                ig_username=sample_username,
-                display_name="暖暖豬 (demo)",
-                description="Demo account profile bound to the 暖暖豬 persona.",
-                persona_id=persona.id,
-            )
-            db.add(profile)
-            db.commit()
-            db.refresh(profile)
-            print(f"  Created AccountProfile: {profile.ig_username} (id={profile.id})")
     finally:
         db.close()
 

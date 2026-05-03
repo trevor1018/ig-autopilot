@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy import JSON, DateTime, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from core.db import Base
 
@@ -25,7 +25,3 @@ class Persona(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
-
-    profiles: Mapped[list["AccountProfile"]] = relationship(  # type: ignore[name-defined]
-        back_populates="persona"
-    )

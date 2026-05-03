@@ -13,41 +13,17 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    anthropic_api_key: str = ""  # reserved for future Claude-based features
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
+    # Image model = "Nano Banana" (Google's instruction-based image edit / gen model).
+    # Same API key as gemini_model. Free-tier limited (~10-50 RPD typical).
+    image_model: str = "gemini-2.5-flash-image-preview"
 
     database_url: str = f"sqlite:///{BASE_DIR / 'data' / 'ig_autopilot.db'}"
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
-
-    ig_dry_run: bool = True
-    # READ-ONLY mode: real login + real post fetch, but the sweep service
-    # SKIPS the actual like/comment write. Lets you preview with real data
-    # without ban risk. Ignored when ig_dry_run=true (dry-run still wins).
-    ig_read_only: bool = False
-    ig_username: str = ""
-    ig_password: str = ""
-    ig_proxy: str = ""
-
-    sweep_hours: str = "0,8,16"
-    daily_action_cap: int = 120
-    like_ratio: float = 0.9
-    action_delay_min_sec: int = 30
-    action_delay_max_sec: int = 300
-
-    @property
-    def sweep_hour_list(self) -> list[int]:
-        return [int(h.strip()) for h in self.sweep_hours.split(",") if h.strip()]
-
-    @property
-    def current_mode(self) -> str:
-        """One of 'dry_run' / 'read_only' / 'live'. dry_run wins over read_only."""
-        if self.ig_dry_run:
-            return "dry_run"
-        if self.ig_read_only:
-            return "read_only"
-        return "live"
 
     @property
     def cors_origin_list(self) -> list[str]:

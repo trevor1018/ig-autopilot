@@ -37,6 +37,15 @@ class _CaptionOutput(BaseModel):
     hashtags: list[str]
 
 
+class _TranslationOutput(BaseModel):
+    ja: str
+    en: str
+
+
+class _HashtagsOnly(BaseModel):
+    hashtags: list[str]
+
+
 def build_persona_system_prompt(persona: Persona) -> str:
     """Render the full persona spec as a single system instruction.
 
@@ -183,3 +192,78 @@ def generate_caption(
         "cache_read_tokens": getattr(usage, "cached_content_token_count", 0) or 0,
         "cache_creation_tokens": 0,
     }
+
+
+def translate_caption(persona: Persona, zh_text: str) -> dict[str, str]:
+    """Re-translate the zh-TW caption to ja + en after the user edits it.
+
+    No image is sent — translation is text-only. Reuses build_persona_system_prompt
+    so tone / style / character voice stay consistent with the original generation.
+    Lighter than generate_caption (no vision tokens), good for debounced live updates.
+    """
+    if not settings.gemini_api_key:
+        raise RuntimeError("GEMINI_API_KEY is not set.")
+    if not zh_text.strip():
+        raise RuntimeError("zh_text is empty.")
+
+    client = genai.Client(api_key=settings.gemini_api_key)
+    system_prompt = build_persona_system_prompt(persona)
+
+    user_text = (
+        f"The user has edited the zh-TW caption below. Produce ja and en versions in the "
+        f"same {persona.character_name} voice — same tone, similar length, in-character first-person. "
+        f"Each language should be the most natural phrasing for that language, NOT a literal "
+        f"word-for-word translation. Output JSON only.\n\n"
+        f"ZH (edited):\n{zh_text}"
+    )
+
+    response = client.models.generate_content(
+        model=settings.gemini_model,
+        contents=[user_text],
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type="application/json",
+            response_schema=_TranslationOutput,
+        ),
+    )
+    parsed = response.parsed
+    if parsed is None:
+        raise RuntimeError(f"Translation returned no output. Raw: {response.text[:200]}")
+    return {"ja": parsed.ja, "en": parsed.en}
+
+
+def regenerate_hashtags(persona: Persona, zh_text: str) -> list[str]:
+    """Produce a fresh hashtag set based on the user's current zh-TW caption.
+
+    Persona's hashtag rules (count, required tags, language distribution) are
+    enforced via the system prompt, so the output respects #暖暖豬 + ≥1 tag per
+    listed language even after a re-roll.
+    """
+    if not settings.gemini_api_key:
+        raise RuntimeError("GEMINI_API_KEY is not set.")
+    if not zh_text.strip():
+        raise RuntimeError("zh_text is empty.")
+
+    client = genai.Client(api_key=settings.gemini_api_key)
+    system_prompt = build_persona_system_prompt(persona)
+
+    user_text = (
+        f"Based on this zh-TW caption, produce a fresh set of hashtags following the "
+        f"hashtag rules from the system prompt above (exact count, required tags, "
+        f"language distribution). Output JSON only.\n\n"
+        f"ZH:\n{zh_text}"
+    )
+
+    response = client.models.generate_content(
+        model=settings.gemini_model,
+        contents=[user_text],
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type="application/json",
+            response_schema=_HashtagsOnly,
+        ),
+    )
+    parsed = response.parsed
+    if parsed is None:
+        raise RuntimeError(f"Hashtag regeneration returned no output. Raw: {response.text[:200]}")
+    return parsed.hashtags
