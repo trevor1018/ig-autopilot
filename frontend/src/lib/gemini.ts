@@ -12,19 +12,15 @@ import { buildPersonaSystemPrompt, buildShortPersonaContext } from "./persona-pr
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export const TEXT_MODEL = "gemini-2.5-flash";
-// Image edit + gen model. Google has been moving newer image models to paid
-// tier (limit: 0 on free tier even though API responds), so we default to the
-// older 2.0 experimental which still has free quota as of writing.
+// Image edit + gen model — "Nano Banana" GA. Requires the API key's GCP
+// project to have billing enabled (free tier got limit:0 on this model).
+// Pricing as of 2026-Q2: ~$0.039 per generated image.
 //
-// Known IDs to try (free tier most-likely → least-likely):
-//   gemini-2.0-flash-exp-image-generation   ← older but free tier alive
-//   gemini-2.5-flash-image                  ← GA but limit:0 on free tier
-//   gemini-2.5-flash-image-preview          ← previous preview name (404)
-//
-// If quota errors persist on all of these, image studio is unusable on free
-// Gemini API and the user needs paid Google AI Studio billing OR a different
-// provider (Pollinations.ai, fal.ai, etc.).
-export const IMAGE_MODEL = "gemini-2.0-flash-exp-image-generation";
+// Fallbacks if Google renames things:
+//   gemini-2.5-flash-image                  ← current GA, default (paid)
+//   gemini-2.0-flash-exp-image-generation   ← older 2.0 experimental
+//   gemini-2.5-flash-image-preview          ← retired preview name (404)
+export const IMAGE_MODEL = "gemini-2.5-flash-image";
 
 interface InlinePart {
   inlineData: { mimeType: string; data: string };
