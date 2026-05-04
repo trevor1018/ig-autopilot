@@ -103,3 +103,69 @@ export function base64ToBlob(base64: string, mime = "image/png"): Blob {
   for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
   return new Blob([arr], { type: mime });
 }
+
+/**
+ * Save / share an image cross-platform.
+ *
+ * Strategy:
+ *   1. Mobile (iOS Safari, Android Chrome): use Web Share API with a File.
+ *      Triggers the OS native share sheet → user picks "Save to Photos" /
+ *      "Save to Files" / a chat app etc. THIS IS THE ONLY RELIABLE
+ *      "save to camera roll" path on iOS — the `<a download>` trick is
+ *      ignored by Safari.
+ *   2. Desktop browsers: use the classic `<a download>` link.
+ *   3. Older / unusual browsers (no Share API, can't share files): open in
+ *      a new tab so the user can long-press / right-click to save.
+ *
+ * Returns the method used so callers can show a hint if they want.
+ */
+export async function downloadOrShareImage(
+  base64: string,
+  mime: string,
+  filename: string,
+): Promise<"share" | "download" | "newtab"> {
+  const blob = base64ToBlob(base64, mime);
+  const file = new File([blob], filename, { type: mime });
+
+  // 1. Web Share API with files (modern mobile)
+  const nav = navigator as Navigator & {
+    canShare?: (data: { files?: File[] }) => boolean;
+    share?: (data: { files?: File[]; title?: string }) => Promise<void>;
+  };
+  if (
+    typeof nav.share === "function" &&
+    typeof nav.canShare === "function" &&
+    nav.canShare({ files: [file] })
+  ) {
+    try {
+      await nav.share({ files: [file], title: filename });
+      return "share";
+    } catch (err) {
+      const name = (err as Error)?.name ?? "";
+      if (name === "AbortError") {
+        // User cancelled the share sheet — treat as success, don't fallback.
+        return "share";
+      }
+      // Other share error — fall through to download path.
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
+  try {
+    // 2. Desktop / supported mobile: <a download>
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    // 3. Fallback for browsers that ignore `download`: opens in new tab so
+    //    the user can long-press / right-click → "save image as".
+    a.target = "_blank";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } finally {
+    // Delay revoke so the browser actually has a chance to read the blob URL.
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+  return "download";
+}

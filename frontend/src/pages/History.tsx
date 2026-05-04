@@ -8,7 +8,7 @@ import {
   listCaptionHistory,
   listImageHistory,
 } from "../lib/firestore";
-import { toDataUrl } from "../lib/image-utils";
+import { downloadOrShareImage, toDataUrl } from "../lib/image-utils";
 
 type Tab = "captions" | "images";
 
@@ -81,13 +81,14 @@ function History() {
     navigator.clipboard.writeText(text).catch(() => {});
   }
 
-  function downloadImage(item: ImageHistory) {
-    const a = document.createElement("a");
-    a.href = toDataUrl(item.result_image, item.result_mime);
-    a.download = `nuannuanzhu_${item.created_at}.jpg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  async function downloadImage(item: ImageHistory) {
+    const ext = item.result_mime.includes("jpeg") ? "jpg" : "png";
+    const filename = `nuannuanzhu_${item.created_at}.${ext}`;
+    try {
+      await downloadOrShareImage(item.result_image, item.result_mime, filename);
+    } catch (e) {
+      setError(`下載失敗: ${String(e)}`);
+    }
   }
 
   const tabClass = (active: boolean) =>
