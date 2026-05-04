@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useUser } from "../lib/auth";
 import {
   Persona,
-  countImagesThisMonth,
   ensureDefaultPersona,
   getApiKey,
+  getMonthlyImageUsage,
+  incrementMonthlyImageUsage,
   listPersonas,
   saveImageHistory,
 } from "../lib/firestore";
@@ -51,7 +52,7 @@ function ImageStudio() {
   async function refreshUsage() {
     if (!user) return;
     try {
-      const n = await countImagesThisMonth(user.uid);
+      const n = await getMonthlyImageUsage(user.uid);
       setMonthlyCount(n);
       setUsageLoaded(true);
     } catch {
@@ -149,7 +150,6 @@ function ImageStudio() {
         created_at: Date.now(),
       });
       setSavedToHistory(true);
-      refreshUsage();
     } catch (e) {
       console.warn("History save failed:", e);
     }
@@ -169,6 +169,10 @@ function ImageStudio() {
       if (!apiKey) throw new Error("Gemini API key 未設定 — 去「設定」頁加。");
       const c = await compressToJpeg(photo, 1280, 0.85);
       const res = await editImage(c.base64, c.mimeType, instruction, selectedPersona, apiKey);
+      // Counter increment FIRST — Gemini API call already happened, GCP will
+      // bill for it whether or not we save history. Counter must reflect that.
+      await incrementMonthlyImageUsage(user.uid).catch(() => {});
+      refreshUsage();
       const ingested = ingestResult(res);
       setResult(ingested);
       await persistToHistoryAndRefresh({
@@ -198,6 +202,8 @@ function ImageStudio() {
       const apiKey = await getApiKey(user.uid);
       if (!apiKey) throw new Error("Gemini API key 未設定 — 去「設定」頁加。");
       const res = await generateImage(prompt, selectedPersona, apiKey);
+      await incrementMonthlyImageUsage(user.uid).catch(() => {});
+      refreshUsage();
       const ingested = ingestResult(res);
       setResult(ingested);
       await persistToHistoryAndRefresh({

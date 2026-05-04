@@ -15,6 +15,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   orderBy,
   query,
   setDoc,
@@ -175,15 +176,60 @@ export async function deleteImageHistory(uid: string, id: string): Promise<void>
   await deleteDoc(doc(db, "users", uid, "images", id));
 }
 
-/** Count images generated/edited in the current calendar month (UTC).
- *  Used for cost estimation in Image Studio. */
-export async function countImagesThisMonth(uid: string): Promise<number> {
+/** Count images currently in history for the current month.
+ *  Used only as a one-time backfill when the persistent counter is empty. */
+async function countImagesInHistoryThisMonth(uid: string): Promise<number> {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   const col = collection(db, "users", uid, "images");
   const q = query(col, where("created_at", ">=", startOfMonth));
   const snap = await getDocs(q);
   return snap.size;
+}
+
+function currentMonthKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Atomically increment the monthly image API usage counter.
+ *  Called after every successful image generation/edit. The counter is
+ *  intentionally separate from the images history collection so that
+ *  deleting history rows DOES NOT reduce the usage count — the count
+ *  reflects "API calls made", which is what GCP actually charges for. */
+export async function incrementMonthlyImageUsage(uid: string): Promise<void> {
+  const ref = doc(db, "users", uid, "usage", currentMonthKey());
+  await setDoc(
+    ref,
+    { count: increment(1), last_updated: Date.now() },
+    { merge: true },
+  );
+}
+
+/** Read the monthly image API usage counter.
+ *  On first read of a month, if the counter doesn't exist, backfill from
+ *  the current history count (so users who upgraded in mid-month don't see 0). */
+export async function getMonthlyImageUsage(uid: string): Promise<number> {
+  const ref = doc(db, "users", uid, "usage", currentMonthKey());
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    return (snap.data().count as number) ?? 0;
+  }
+  // First read this month — backfill from existing history rows once.
+  const initial = await countImagesInHistoryThisMonth(uid);
+  if (initial > 0) {
+    await setDoc(ref, {
+      count: initial,
+      last_updated: Date.now(),
+      backfilled: true,
+    });
+  }
+  return initial;
+}
+
+// Kept for backward compat (was used by Image Studio); now an alias.
+export async function countImagesThisMonth(uid: string): Promise<number> {
+  return getMonthlyImageUsage(uid);
 }
 
 // ===== Settings (Gemini API key) =====
