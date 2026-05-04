@@ -26,15 +26,19 @@ interface ResultState {
 const COST_PER_IMAGE_USD = 0.039; // gemini-2.5-flash-image price
 const MONTHLY_BUDGET_USD = 5;
 
+// Cap for the number of source photos in edit mode. Gemini 2.5 Flash Image
+// handles 1-3 inputs reliably; more often confuses the composition.
+const MAX_EDIT_PHOTOS = 5;
+
 function ImageStudio() {
   const { user } = useUser();
   const [mode, setMode] = useState<Mode>("edit");
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [personaId, setPersonaId] = useState<string | null>(null);
 
-  // Edit mode
-  const [photo, setPhoto] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // Edit mode — supports multiple source photos for composition tasks
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [instruction, setInstruction] = useState("");
 
   // Generate mode
@@ -73,14 +77,37 @@ function ImageStudio() {
   }, [user]);
 
   useEffect(() => {
-    if (!photo) {
-      setPreviewUrl(null);
+    if (photos.length === 0) {
+      setPreviewUrls([]);
       return;
     }
-    const url = URL.createObjectURL(photo);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [photo]);
+    const urls = photos.map((p) => URL.createObjectURL(p));
+    setPreviewUrls(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [photos]);
+
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length === 0) return;
+    if (picked.length > MAX_EDIT_PHOTOS) {
+      setError(
+        `一次最多 ${MAX_EDIT_PHOTOS} 張(過多 AI 容易搞混),已截取前 ${MAX_EDIT_PHOTOS} 張`,
+      );
+      setPhotos(picked.slice(0, MAX_EDIT_PHOTOS));
+    } else {
+      setError(null);
+      setPhotos(picked);
+    }
+    e.target.value = "";
+  }
+
+  function removePhoto(i: number) {
+    setPhotos((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function clearAllPhotos() {
+    setPhotos([]);
+  }
 
   useEffect(() => {
     return () => {
@@ -113,15 +140,16 @@ function ImageStudio() {
     mode: Mode;
     promptText: string;
     persona: Persona | null;
-    sourceFile: File | null;
+    sourceFiles: File[]; // empty for generate mode
     result: ResultState;
   }) {
     if (!user) return;
     try {
-      // Source thumbnail for edit mode (so history shows what we started from)
+      // Source thumbnail = first photo only (Firestore doc limit means we can't
+      // store all of them); source_count records how many were actually fed in.
       let sourceThumb: string | null = null;
-      if (args.sourceFile) {
-        const t = await compressToJpeg(args.sourceFile, 256, 0.7);
+      if (args.sourceFiles.length > 0) {
+        const t = await compressToJpeg(args.sourceFiles[0], 256, 0.7);
         sourceThumb = t.base64;
       }
 
@@ -144,6 +172,7 @@ function ImageStudio() {
         persona_id: args.persona?.id ?? null,
         persona_name: args.persona?.name ?? "",
         source_thumbnail: sourceThumb,
+        source_count: args.sourceFiles.length,
         result_image: resultB64,
         result_mime: resultMime,
         narrative: args.result.narrative,
@@ -157,8 +186,8 @@ function ImageStudio() {
 
   async function onSubmitEdit(e: React.FormEvent) {
     e.preventDefault();
-    if (!user || !photo || !instruction.trim()) {
-      setError("請上傳照片並寫修圖指令");
+    if (!user || photos.length === 0 || !instruction.trim()) {
+      setError("請上傳至少一張照片並寫修圖指令");
       return;
     }
     setLoading(true);
@@ -167,8 +196,17 @@ function ImageStudio() {
     try {
       const apiKey = await getApiKey(user.uid);
       if (!apiKey) throw new Error("Gemini API key 未設定 — 去「設定」頁加。");
-      const c = await compressToJpeg(photo, 1280, 0.85);
-      const res = await editImage(c.base64, c.mimeType, instruction, selectedPersona, apiKey);
+
+      // Compress each photo before sending. Smaller payload = faster + less
+      // chance of hitting per-request size limits when N>1.
+      const inputs = await Promise.all(
+        photos.map(async (f) => {
+          const c = await compressToJpeg(f, 1280, 0.85);
+          return { base64: c.base64, mime: c.mimeType };
+        }),
+      );
+
+      const res = await editImage(inputs, instruction, selectedPersona, apiKey);
       // Counter increment FIRST — Gemini API call already happened, GCP will
       // bill for it whether or not we save history. Counter must reflect that.
       await incrementMonthlyImageUsage(user.uid).catch(() => {});
@@ -179,7 +217,7 @@ function ImageStudio() {
         mode: "edit",
         promptText: instruction,
         persona: selectedPersona,
-        sourceFile: photo,
+        sourceFiles: photos,
         result: ingested,
       });
     } catch (e) {
@@ -210,7 +248,7 @@ function ImageStudio() {
         mode: "generate",
         promptText: prompt,
         persona: selectedPersona,
-        sourceFile: null,
+        sourceFiles: [],
         result: ingested,
       });
     } catch (e) {
@@ -296,19 +334,62 @@ function ImageStudio() {
             className="space-y-4 bg-white p-4 sm:p-6 rounded-lg border border-slate-200"
           >
             <div>
-              <label className="block text-sm font-medium mb-1">原始照片</label>
+              <label className="block text-sm font-medium mb-1">
+                原始照片{" "}
+                <span className="text-xs font-normal text-slate-400">
+                  (可多張,最多 {MAX_EDIT_PHOTOS} 張 — 多張會做合成)
+                </span>
+              </label>
               <input
                 type="file"
                 accept="image/*"
-                onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+                multiple
+                onChange={onFileChange}
                 className="block w-full text-sm"
               />
-              {previewUrl && (
-                <img
-                  src={previewUrl}
-                  alt="預覽"
-                  className="mt-3 max-h-72 rounded-md border"
-                />
+
+              {photos.length > 0 && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between mb-2 text-xs">
+                    <span className="text-slate-600 font-medium">
+                      已選 {photos.length} 張
+                      {photos.length > 1 && (
+                        <span className="ml-2 px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded">
+                          🧩 合成
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={clearAllPhotos}
+                      className="text-slate-500 hover:text-red-600"
+                    >
+                      全部清除
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {previewUrls.map((url, i) => (
+                      <div key={i} className="relative group">
+                        <img
+                          src={url}
+                          alt={`預覽 ${i + 1}`}
+                          className="w-full h-24 object-cover rounded border border-slate-200"
+                        />
+                        <div className="absolute top-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                          {i + 1}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(i)}
+                          className="absolute top-1 right-1 bg-white/95 hover:bg-white text-red-600 rounded-full w-5 h-5 text-xs font-bold flex items-center justify-center shadow"
+                          title="移除這張"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
             <div>
@@ -323,18 +404,29 @@ function ImageStudio() {
                 rows={4}
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
-                placeholder="例:把暖暖豬的眼睛閉起來,看起來像在睡覺,其他部分完全不要動"
+                placeholder={
+                  photos.length > 1
+                    ? "例:把第 1 張的暖暖豬放到第 2 張的咖啡廳場景裡,光線自然融合"
+                    : "例:把暖暖豬的眼睛閉起來,看起來像在睡覺,其他部分完全不要動"
+                }
               />
               <p className="text-xs text-slate-400 mt-1">
-                💡 越具體越好。記得寫「其他部分不要動」之類的保留指令。
+                💡{" "}
+                {photos.length > 1
+                  ? `多張合成時建議在指令裡用「第 1 張」「第 2 張」明確指涉,效果最好`
+                  : "越具體越好。記得寫「其他部分不要動」之類的保留指令。"}
               </p>
             </div>
             <button
               type="submit"
-              disabled={loading || !photo || !instruction.trim()}
+              disabled={loading || photos.length === 0 || !instruction.trim()}
               className="w-full bg-brand-500 hover:bg-brand-600 disabled:bg-slate-300 text-white font-medium py-2 rounded-md transition"
             >
-              {loading ? "AI 修圖中... (5-15 秒)" : "✏️ 開始修圖"}
+              {loading
+                ? "AI 修圖中... (5-15 秒)"
+                : photos.length > 1
+                  ? `✏️ 開始合成 (${photos.length} 張)`
+                  : "✏️ 開始修圖"}
             </button>
             {error && (
               <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded">

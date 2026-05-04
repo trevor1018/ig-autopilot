@@ -244,7 +244,14 @@ function History() {
                       <div className="p-2 space-y-1">
                         <div className="flex justify-between items-center text-xs">
                           <span className="text-slate-500">
-                            {img.mode === "edit" ? "✏️ 修圖" : "🎨 生成"} · {timeStr(img.created_at)}
+                            {img.mode === "edit" ? "✏️ 修圖" : "🎨 生成"}
+                            {img.mode === "edit" && (img.source_count ?? 1) > 1 && (
+                              <span className="ml-1 px-1 py-0.5 bg-brand-50 text-brand-700 rounded text-[10px]">
+                                🧩 ×{img.source_count}
+                              </span>
+                            )}
+                            {" · "}
+                            {timeStr(img.created_at)}
                           </span>
                           <button
                             onClick={() => onDeleteImage(img.id)}

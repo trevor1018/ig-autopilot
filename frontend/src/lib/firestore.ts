@@ -150,7 +150,8 @@ export interface ImageHistory {
   prompt: string; // edit instruction OR generation prompt
   persona_id: string | null;
   persona_name: string;
-  source_thumbnail: string | null; // base64, only for edit mode
+  source_thumbnail: string | null; // base64 of FIRST source photo (for thumbnail)
+  source_count?: number; // how many photos were uploaded; absent on legacy rows
   result_image: string; // base64 (compressed)
   result_mime: string;
   narrative: string;

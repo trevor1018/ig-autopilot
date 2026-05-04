@@ -268,32 +268,48 @@ const IMAGE_GEN_CONFIG = {
   responseModalities: ["IMAGE", "TEXT"],
 };
 
+export interface ImageInput {
+  base64: string;
+  mime: string;
+}
+
 export async function editImage(
-  imageBase64: string,
-  imageMime: string,
+  images: ImageInput[],
   instruction: string,
   persona: Persona | null,
   apiKey: string,
 ): Promise<ImageGenResult> {
   if (!instruction.trim()) throw new Error("Instruction is required.");
+  if (images.length === 0) throw new Error("At least one image is required.");
+
   // Strong directive — the model often "narrates" the edit in text instead of
   // producing an image; explicit "return only the edited image" reduces this.
   const personaLine = persona
-    ? `The character in this image is named ${persona.character_name}. `
+    ? `The character in these images is named ${persona.character_name}. `
     : "";
+  const sourceDescriptor =
+    images.length === 1 ? "this image" : `these ${images.length} input images`;
+  const verbLine =
+    images.length === 1
+      ? `Edit ${sourceDescriptor} as follows: ${instruction.trim()}`
+      : `You are given ${images.length} input images. Combine / compose them ` +
+        `into a single output image as follows: ${instruction.trim()}`;
   const fullPrompt =
     `${personaLine}` +
-    `Edit this image as follows: ${instruction.trim()}\n\n` +
-    `IMPORTANT: Return ONLY the edited image as output. ` +
+    `${verbLine}\n\n` +
+    `IMPORTANT: Return ONLY the resulting image as output. ` +
     `Do not respond with text descriptions, explanations, or commentary. ` +
-    `The output of this turn must be a modified version of the input image.`;
+    `The output of this turn must be a single image.`;
+
   const body = {
-    // Image FIRST so the model "sees" the source before reading the
-    // instruction — empirically reduces the text-only response failure mode.
+    // Images FIRST so the model "sees" them before reading the instruction —
+    // empirically reduces the text-only response failure mode.
     contents: [
       {
         parts: [
-          { inlineData: { mimeType: imageMime, data: imageBase64 } },
+          ...images.map((img) => ({
+            inlineData: { mimeType: img.mime, data: img.base64 },
+          })),
           { text: fullPrompt },
         ],
       },
