@@ -239,9 +239,9 @@ function ImageStudio() {
     }`;
 
   return (
-    <div className="grid lg:grid-cols-2 gap-8">
+    <div className="grid lg:grid-cols-2 gap-5 lg:gap-8">
       <section>
-        <div className="flex border-b border-slate-200 mb-6">
+        <div className="flex border-b border-slate-200 mb-4 sm:mb-6">
           <button
             className={tabClass(mode === "edit")}
             onClick={() => {
@@ -293,7 +293,7 @@ function ImageStudio() {
         {mode === "edit" ? (
           <form
             onSubmit={onSubmitEdit}
-            className="space-y-4 bg-white p-6 rounded-lg border border-slate-200"
+            className="space-y-4 bg-white p-4 sm:p-6 rounded-lg border border-slate-200"
           >
             <div>
               <label className="block text-sm font-medium mb-1">原始照片</label>
@@ -345,7 +345,7 @@ function ImageStudio() {
         ) : (
           <form
             onSubmit={onSubmitGenerate}
-            className="space-y-4 bg-white p-6 rounded-lg border border-slate-200"
+            className="space-y-4 bg-white p-4 sm:p-6 rounded-lg border border-slate-200"
           >
             <div>
               <label className="block text-sm font-medium mb-1">
@@ -409,7 +409,7 @@ function ImageStudio() {
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold mb-4">結果</h2>
+        <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">結果</h2>
         {!result && !loading && (
           <div className="bg-white p-6 rounded-lg border border-dashed border-slate-300 text-center text-slate-400">
             結果會顯示在這。

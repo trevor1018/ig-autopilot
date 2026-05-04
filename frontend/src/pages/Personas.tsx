@@ -29,8 +29,8 @@ function Personas() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">角色 (Personas)</h2>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 className="text-base sm:text-lg font-semibold">角色 (Personas)</h2>
         <span className="text-xs text-slate-400">
           目前 UI 唯讀。要新增 / 編輯角色請告訴我,我做給你。
         </span>

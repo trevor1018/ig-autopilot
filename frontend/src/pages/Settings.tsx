@@ -47,14 +47,14 @@ function Settings() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h2 className="text-lg font-semibold mb-1">設定</h2>
+        <h2 className="text-base sm:text-lg font-semibold mb-1">設定</h2>
         <p className="text-xs text-slate-500">
           登入帳號:<code className="ml-1 bg-slate-100 px-1.5 py-0.5 rounded">{user?.email}</code>
         </p>
       </div>
 
       {/* API key card */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-3">
+      <div className="bg-white border border-slate-200 rounded-lg p-4 sm:p-6 space-y-3">
         <div>
           <h3 className="font-semibold text-sm">Gemini API Key</h3>
           <p className="text-xs text-slate-500 mt-1">
@@ -107,7 +107,7 @@ function Settings() {
       </div>
 
       {/* Sign out card */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6">
+      <div className="bg-white border border-slate-200 rounded-lg p-4 sm:p-6">
         <h3 className="font-semibold text-sm mb-2">帳號</h3>
         <button
           onClick={() => signOutNow()}

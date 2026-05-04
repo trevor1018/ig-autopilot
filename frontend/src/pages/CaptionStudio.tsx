@@ -241,10 +241,10 @@ function CaptionStudio() {
   }
 
   return (
-    <div className="grid lg:grid-cols-2 gap-8">
+    <div className="grid lg:grid-cols-2 gap-5 lg:gap-8">
       <section>
-        <h2 className="text-lg font-semibold mb-4">上傳並設定</h2>
-        <form onSubmit={onSubmit} className="space-y-4 bg-white p-6 rounded-lg border border-slate-200">
+        <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">上傳並設定</h2>
+        <form onSubmit={onSubmit} className="space-y-4 bg-white p-4 sm:p-6 rounded-lg border border-slate-200">
           <div>
             <label className="block text-sm font-medium mb-1">角色 (Persona)</label>
             <select
@@ -361,7 +361,7 @@ function CaptionStudio() {
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold mb-4">結果</h2>
+        <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">結果</h2>
         {!result && !loading && (
           <div className="bg-white p-6 rounded-lg border border-dashed border-slate-300 text-center text-slate-400">
             結果會顯示在這。

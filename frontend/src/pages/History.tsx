@@ -100,7 +100,7 @@ function History() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold">歷史紀錄</h2>
+        <h2 className="text-base sm:text-lg font-semibold">歷史紀錄</h2>
         <button
           onClick={() => setRefreshKey((k) => k + 1)}
           className="text-xs text-brand-600 hover:underline"

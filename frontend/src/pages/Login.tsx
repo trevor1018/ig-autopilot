@@ -19,10 +19,10 @@ function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-6">
-      <div className="bg-white border border-slate-200 rounded-xl p-10 w-full max-w-md text-center shadow-sm">
-        <h1 className="text-2xl font-bold text-brand-600 mb-2">IG Autopilot</h1>
-        <p className="text-sm text-slate-500 mb-8">內容創作工具 · 文案 + 修圖</p>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 sm:px-6">
+      <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-10 w-full max-w-md text-center shadow-sm">
+        <h1 className="text-xl sm:text-2xl font-bold text-brand-600 mb-2">IG Autopilot</h1>
+        <p className="text-sm text-slate-500 mb-6 sm:mb-8">內容創作工具 · 文案 + 修圖</p>
 
         <button
           onClick={onSignIn}
@@ -43,7 +43,7 @@ function Login() {
           </div>
         )}
 
-        <p className="text-xs text-slate-400 mt-8 leading-relaxed">
+        <p className="text-xs text-slate-400 mt-6 sm:mt-8 leading-relaxed">
           資料儲存於 Firebase Firestore,只有你自己的 Google 帳號讀得到。
           <br />
           首次登入會建立預設「暖暖豬」角色。
