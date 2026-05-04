@@ -19,6 +19,7 @@ import {
   query,
   setDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -172,6 +173,17 @@ export async function listImageHistory(uid: string): Promise<ImageHistory[]> {
 
 export async function deleteImageHistory(uid: string, id: string): Promise<void> {
   await deleteDoc(doc(db, "users", uid, "images", id));
+}
+
+/** Count images generated/edited in the current calendar month (UTC).
+ *  Used for cost estimation in Image Studio. */
+export async function countImagesThisMonth(uid: string): Promise<number> {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const col = collection(db, "users", uid, "images");
+  const q = query(col, where("created_at", ">=", startOfMonth));
+  const snap = await getDocs(q);
+  return snap.size;
 }
 
 // ===== Settings (Gemini API key) =====

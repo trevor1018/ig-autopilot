@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useUser } from "../lib/auth";
 import {
   Persona,
+  countImagesThisMonth,
   ensureDefaultPersona,
   getApiKey,
   listPersonas,
@@ -18,6 +19,11 @@ interface ResultState {
   mime: string;
   narrative: string;
 }
+
+// Pricing & budget (matches what you set in GCP Console → Billing → Budgets).
+// Update both numbers here if you change the cap.
+const COST_PER_IMAGE_USD = 0.039; // gemini-2.5-flash-image price
+const MONTHLY_BUDGET_USD = 5;
 
 function ImageStudio() {
   const { user } = useUser();
@@ -38,6 +44,21 @@ function ImageStudio() {
   const [result, setResult] = useState<ResultState | null>(null);
   const [savedToHistory, setSavedToHistory] = useState(false);
 
+  // Monthly usage tracking (refreshed on mount + after each successful gen)
+  const [monthlyCount, setMonthlyCount] = useState<number>(0);
+  const [usageLoaded, setUsageLoaded] = useState(false);
+
+  async function refreshUsage() {
+    if (!user) return;
+    try {
+      const n = await countImagesThisMonth(user.uid);
+      setMonthlyCount(n);
+      setUsageLoaded(true);
+    } catch {
+      // non-fatal
+    }
+  }
+
   useEffect(() => {
     if (!user) return;
     ensureDefaultPersona(user.uid)
@@ -47,6 +68,7 @@ function ImageStudio() {
         if (rows.length > 0 && personaId === null) setPersonaId(rows[0].id);
       })
       .catch((e) => setError(String(e)));
+    refreshUsage();
   }, [user]);
 
   useEffect(() => {
@@ -86,7 +108,7 @@ function ImageStudio() {
     };
   }
 
-  async function persistToHistory(args: {
+  async function persistToHistoryAndRefresh(args: {
     mode: Mode;
     promptText: string;
     persona: Persona | null;
@@ -127,6 +149,7 @@ function ImageStudio() {
         created_at: Date.now(),
       });
       setSavedToHistory(true);
+      refreshUsage();
     } catch (e) {
       console.warn("History save failed:", e);
     }
@@ -148,7 +171,7 @@ function ImageStudio() {
       const res = await editImage(c.base64, c.mimeType, instruction, selectedPersona, apiKey);
       const ingested = ingestResult(res);
       setResult(ingested);
-      await persistToHistory({
+      await persistToHistoryAndRefresh({
         mode: "edit",
         promptText: instruction,
         persona: selectedPersona,
@@ -177,7 +200,7 @@ function ImageStudio() {
       const res = await generateImage(prompt, selectedPersona, apiKey);
       const ingested = ingestResult(res);
       setResult(ingested);
-      await persistToHistory({
+      await persistToHistoryAndRefresh({
         mode: "generate",
         promptText: prompt,
         persona: selectedPersona,
@@ -348,9 +371,35 @@ function ImageStudio() {
           </form>
         )}
 
-        <div className="mt-4 text-xs text-slate-400 bg-slate-50 p-3 rounded">
-          ⚠️ Gemini 圖像 API 免費版額度有限(約每天 10-50 次)。每次生成都會用掉一次。
-        </div>
+        {/* Monthly usage gauge */}
+        {(() => {
+          const cost = monthlyCount * COST_PER_IMAGE_USD;
+          const pct = Math.min(100, (cost / MONTHLY_BUDGET_USD) * 100);
+          const barColor =
+            pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-green-500";
+          return (
+            <div className="mt-4 bg-white p-3 rounded-lg border border-slate-200">
+              <div className="flex justify-between items-baseline mb-1.5 text-xs">
+                <span className="font-medium text-slate-700">本月圖像 API 用量</span>
+                <span className="text-slate-500">
+                  ${cost.toFixed(2)} / ${MONTHLY_BUDGET_USD.toFixed(2)}
+                </span>
+              </div>
+              <div className="h-2 bg-slate-100 rounded overflow-hidden mb-1.5">
+                <div
+                  className={`h-full transition-all ${barColor}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="text-[10px] text-slate-400 leading-relaxed">
+                {usageLoaded
+                  ? `已產 ${monthlyCount} 張 × $${COST_PER_IMAGE_USD}/張 · `
+                  : "讀取中... · "}
+                預算 ${MONTHLY_BUDGET_USD} 是你在 GCP Console 設的軟性上限,真實帳單以 GCP Billing 為準
+              </div>
+            </div>
+          );
+        })()}
       </section>
 
       <section>
