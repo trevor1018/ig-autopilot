@@ -7,7 +7,7 @@
  */
 
 import { Persona } from "./firestore";
-import { buildPersonaSystemPrompt, buildShortPersonaContext } from "./persona-prompt";
+import { buildPersonaSystemPrompt } from "./persona-prompt";
 
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -241,7 +241,19 @@ function extractImage(r: GeminiResponse): ImageGenResult {
   if (!imagePart) {
     const block = r.promptFeedback?.blockReason || "(none)";
     const text = textChunks.join(" ").slice(0, 300);
-    throw new Error(`Image API returned no image. Block: ${block}. Model said: ${text || "(no text)"}`);
+    if (block !== "(none)") {
+      throw new Error(
+        `Gemini blocked the request (${block}). Try rephrasing your instruction. ` +
+        `Model said: ${text || "(no text)"}`,
+      );
+    }
+    // No block reason — model just chose to narrate instead of produce an image.
+    // This is a known Gemini quirk; usually fixed by retrying or rephrasing.
+    throw new Error(
+      `Gemini 沒有產生圖片,只回了文字 (這是模型偶發的 quirk,不是 bug)。` +
+      `按一次「開始修圖/生成」直接重試通常就好了。或試試把指令寫得更具體 / 更英文。\n\n` +
+      `模型剛剛回的文字: ${text || "(無)"}`,
+    );
   }
   return {
     image_base64: imagePart.inlineData.data,
@@ -264,15 +276,25 @@ export async function editImage(
   apiKey: string,
 ): Promise<ImageGenResult> {
   if (!instruction.trim()) throw new Error("Instruction is required.");
-  const fullPrompt = persona
-    ? `${buildShortPersonaContext(persona)}\n${instruction.trim()}`
-    : instruction.trim();
+  // Strong directive — the model often "narrates" the edit in text instead of
+  // producing an image; explicit "return only the edited image" reduces this.
+  const personaLine = persona
+    ? `The character in this image is named ${persona.character_name}. `
+    : "";
+  const fullPrompt =
+    `${personaLine}` +
+    `Edit this image as follows: ${instruction.trim()}\n\n` +
+    `IMPORTANT: Return ONLY the edited image as output. ` +
+    `Do not respond with text descriptions, explanations, or commentary. ` +
+    `The output of this turn must be a modified version of the input image.`;
   const body = {
+    // Image FIRST so the model "sees" the source before reading the
+    // instruction — empirically reduces the text-only response failure mode.
     contents: [
       {
         parts: [
-          { text: fullPrompt },
           { inlineData: { mimeType: imageMime, data: imageBase64 } },
+          { text: fullPrompt },
         ],
       },
     ],
@@ -287,9 +309,13 @@ export async function generateImage(
   apiKey: string,
 ): Promise<ImageGenResult> {
   if (!prompt.trim()) throw new Error("Prompt is required.");
-  const fullPrompt = persona
-    ? `${buildShortPersonaContext(persona)}\n${prompt.trim()}`
-    : prompt.trim();
+  const personaLine = persona
+    ? `(Featured character in the scene: ${persona.character_name}.) `
+    : "";
+  const fullPrompt =
+    `${personaLine}` +
+    `Generate an image based on this description: ${prompt.trim()}\n\n` +
+    `IMPORTANT: Return ONLY the generated image. No text commentary.`;
   const body = {
     contents: [{ parts: [{ text: fullPrompt }] }],
     generationConfig: IMAGE_GEN_CONFIG,
