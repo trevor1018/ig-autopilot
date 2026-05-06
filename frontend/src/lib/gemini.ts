@@ -12,15 +12,10 @@ import { buildPersonaSystemPrompt } from "./persona-prompt";
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export const TEXT_MODEL = "gemini-2.5-flash";
-// Image edit + gen model — "Nano Banana" GA. Requires the API key's GCP
-// project to have billing enabled (free tier got limit:0 on this model).
-// Pricing as of 2026-Q2: ~$0.039 per generated image.
-//
-// Fallbacks if Google renames things:
-//   gemini-2.5-flash-image                  ← current GA, default (paid)
-//   gemini-2.0-flash-exp-image-generation   ← older 2.0 experimental
-//   gemini-2.5-flash-image-preview          ← retired preview name (404)
-export const IMAGE_MODEL = "gemini-2.5-flash-image";
+// Image generation moved out of Gemini (paid only — got billing surprises).
+// See lib/pollinations.ts for the free image gen + this file's
+// describePhotoForRegeneration() for the Vision describe step that helps
+// "edit" mode regenerate something similar to the source photo.
 
 interface InlinePart {
   inlineData: { mimeType: string; data: string };
@@ -219,122 +214,41 @@ export async function regenerateHashtags(
   return JSON.parse(textPart.text).hashtags;
 }
 
-// ===== Image edit + generate =====
+// ===== Image-related text helpers =====
+// Note: ACTUAL image generation moved to Pollinations.ai (see pollinations.ts).
+// Gemini still helps by describing source photos so Pollinations can
+// regenerate something similar with the user's edit instruction applied.
 
-export interface ImageGenResult {
-  image_base64: string;
-  image_mime: string;
-  narrative: string;
-}
-
-function extractImage(r: GeminiResponse): ImageGenResult {
-  const parts = r.candidates?.[0]?.content?.parts ?? [];
-  let imagePart: InlinePart | undefined;
-  const textChunks: string[] = [];
-  for (const p of parts) {
-    if ("inlineData" in p && !imagePart) {
-      imagePart = p;
-    } else if ("text" in p) {
-      textChunks.push(p.text);
-    }
-  }
-  if (!imagePart) {
-    const block = r.promptFeedback?.blockReason || "(none)";
-    const text = textChunks.join(" ").slice(0, 300);
-    if (block !== "(none)") {
-      throw new Error(
-        `Gemini blocked the request (${block}). Try rephrasing your instruction. ` +
-        `Model said: ${text || "(no text)"}`,
-      );
-    }
-    // No block reason — model just chose to narrate instead of produce an image.
-    // This is a known Gemini quirk; usually fixed by retrying or rephrasing.
-    throw new Error(
-      `Gemini 沒有產生圖片,只回了文字 (這是模型偶發的 quirk,不是 bug)。` +
-      `按一次「開始修圖/生成」直接重試通常就好了。或試試把指令寫得更具體 / 更英文。\n\n` +
-      `模型剛剛回的文字: ${text || "(無)"}`,
-    );
-  }
-  return {
-    image_base64: imagePart.inlineData.data,
-    image_mime: imagePart.inlineData.mimeType || "image/png",
-    narrative: textChunks.join(" ").trim(),
-  };
-}
-
-// `responseModalities` tells Gemini we want an IMAGE back, not just text.
-// Required for the 2.0-flash-exp-image-generation model; harmless on others.
-const IMAGE_GEN_CONFIG = {
-  responseModalities: ["IMAGE", "TEXT"],
-};
-
-export interface ImageInput {
-  base64: string;
-  mime: string;
-}
-
-export async function editImage(
-  images: ImageInput[],
-  instruction: string,
-  persona: Persona | null,
+/**
+ * Use Gemini Vision (text model — not the paid image one) to produce a short
+ * English description of an uploaded photo. This description is fed into
+ * Pollinations as part of the image-generation prompt for "edit" mode.
+ */
+export async function describePhotoForRegeneration(
+  imageBase64: string,
+  imageMime: string,
   apiKey: string,
-): Promise<ImageGenResult> {
-  if (!instruction.trim()) throw new Error("Instruction is required.");
-  if (images.length === 0) throw new Error("At least one image is required.");
-
-  // Strong directive — the model often "narrates" the edit in text instead of
-  // producing an image; explicit "return only the edited image" reduces this.
-  const personaLine = persona
-    ? `The character in these images is named ${persona.character_name}. `
-    : "";
-  const sourceDescriptor =
-    images.length === 1 ? "this image" : `these ${images.length} input images`;
-  const verbLine =
-    images.length === 1
-      ? `Edit ${sourceDescriptor} as follows: ${instruction.trim()}`
-      : `You are given ${images.length} input images. Combine / compose them ` +
-        `into a single output image as follows: ${instruction.trim()}`;
-  const fullPrompt =
-    `${personaLine}` +
-    `${verbLine}\n\n` +
-    `IMPORTANT: Return ONLY the resulting image as output. ` +
-    `Do not respond with text descriptions, explanations, or commentary. ` +
-    `The output of this turn must be a single image.`;
-
+): Promise<string> {
   const body = {
-    // Images FIRST so the model "sees" them before reading the instruction —
-    // empirically reduces the text-only response failure mode.
     contents: [
       {
         parts: [
-          ...images.map((img) => ({
-            inlineData: { mimeType: img.mime, data: img.base64 },
-          })),
-          { text: fullPrompt },
+          { inlineData: { mimeType: imageMime, data: imageBase64 } },
+          {
+            text:
+              "Describe this image in detail in English so another AI could regenerate something similar. " +
+              "Cover: subjects, composition, colors, lighting, art style, atmosphere. " +
+              "2-4 sentences, no preamble, just the description.",
+          },
         ],
       },
     ],
-    generationConfig: IMAGE_GEN_CONFIG,
   };
-  return extractImage(await callGemini(IMAGE_MODEL, body, apiKey));
+  const r = await callGemini(TEXT_MODEL, body, apiKey);
+  const textPart = r.candidates?.[0]?.content?.parts?.find(
+    (p): p is TextPart => "text" in p,
+  );
+  if (!textPart) throw new Error("Gemini Vision returned no description.");
+  return textPart.text.trim();
 }
 
-export async function generateImage(
-  prompt: string,
-  persona: Persona | null,
-  apiKey: string,
-): Promise<ImageGenResult> {
-  if (!prompt.trim()) throw new Error("Prompt is required.");
-  const personaLine = persona
-    ? `(Featured character in the scene: ${persona.character_name}.) `
-    : "";
-  const fullPrompt =
-    `${personaLine}` +
-    `Generate an image based on this description: ${prompt.trim()}\n\n` +
-    `IMPORTANT: Return ONLY the generated image. No text commentary.`;
-  const body = {
-    contents: [{ parts: [{ text: fullPrompt }] }],
-    generationConfig: IMAGE_GEN_CONFIG,
-  };
-  return extractImage(await callGemini(IMAGE_MODEL, body, apiKey));
-}

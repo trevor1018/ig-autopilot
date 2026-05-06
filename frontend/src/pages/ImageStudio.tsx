@@ -9,8 +9,9 @@ import {
   listPersonas,
   saveImageHistory,
 } from "../lib/firestore";
-import { ImageGenResult, editImage, generateImage } from "../lib/gemini";
+import { describePhotoForRegeneration } from "../lib/gemini";
 import { compressToJpeg, downloadOrShareImage, toDataUrl } from "../lib/image-utils";
+import { generateImagePollinations } from "../lib/pollinations";
 
 type Mode = "edit" | "generate";
 
@@ -21,14 +22,11 @@ interface ResultState {
   narrative: string;
 }
 
-// Pricing & budget (matches what you set in GCP Console → Billing → Budgets).
-// Update both numbers here if you change the cap.
-const COST_PER_IMAGE_USD = 0.039; // gemini-2.5-flash-image price
-const MONTHLY_BUDGET_USD = 5;
-
-// Cap for the number of source photos in edit mode. Gemini 2.5 Flash Image
-// handles 1-3 inputs reliably; more often confuses the composition.
-const MAX_EDIT_PHOTOS = 5;
+// Cap for source photos in edit mode. Pollinations only does text-to-image,
+// so multi-photo "composition" works by describing each photo via Gemini Vision
+// and concatenating into one prompt. More than ~3 inputs makes the description
+// pile too long for Pollinations' URL.
+const MAX_EDIT_PHOTOS = 3;
 
 function ImageStudio() {
   const { user } = useUser();
@@ -126,13 +124,16 @@ function ImageStudio() {
     setSavedToHistory(false);
   }
 
-  function ingestResult(r: ImageGenResult): ResultState {
-    const url = toDataUrl(r.image_base64, r.image_mime);
+  function ingestResult(args: {
+    base64: string;
+    mime: string;
+    narrative?: string;
+  }): ResultState {
     return {
-      url,
-      base64: r.image_base64,
-      mime: r.image_mime,
-      narrative: r.narrative,
+      url: toDataUrl(args.base64, args.mime),
+      base64: args.base64,
+      mime: args.mime,
+      narrative: args.narrative ?? "",
     };
   }
 
@@ -197,21 +198,40 @@ function ImageStudio() {
       const apiKey = await getApiKey(user.uid);
       if (!apiKey) throw new Error("Gemini API key 未設定 — 去「設定」頁加。");
 
-      // Compress each photo before sending. Smaller payload = faster + less
-      // chance of hitting per-request size limits when N>1.
-      const inputs = await Promise.all(
-        photos.map(async (f) => {
-          const c = await compressToJpeg(f, 1280, 0.85);
-          return { base64: c.base64, mime: c.mimeType };
-        }),
-      );
+      // Step 1: describe each source photo via Gemini Vision (text model, free).
+      // Step 2: combine descriptions + user instruction into a single prompt.
+      // Step 3: send to Pollinations.ai for image generation (free, no key).
+      const descriptions: string[] = [];
+      for (const f of photos) {
+        const c = await compressToJpeg(f, 768, 0.8);
+        const d = await describePhotoForRegeneration(c.base64, c.mimeType, apiKey);
+        descriptions.push(d);
+      }
 
-      const res = await editImage(inputs, instruction, selectedPersona, apiKey);
-      // Counter increment FIRST — Gemini API call already happened, GCP will
-      // bill for it whether or not we save history. Counter must reflect that.
+      const personaLine = selectedPersona
+        ? `Featured character: ${selectedPersona.character_name}. `
+        : "";
+      const fullPrompt =
+        photos.length === 1
+          ? `${personaLine}${descriptions[0]} Edit instruction: ${instruction.trim()}`
+          : descriptions
+              .map((d, i) => `Source ${i + 1}: ${d}`)
+              .join(" ") +
+            ` ${personaLine}Combine these elements as follows: ${instruction.trim()}`;
+
+      const res = await generateImagePollinations(fullPrompt);
+
+      // Track usage (Pollinations is free, but we count for stats).
       await incrementMonthlyImageUsage(user.uid).catch(() => {});
       refreshUsage();
-      const ingested = ingestResult(res);
+
+      const ingested = ingestResult({
+        base64: res.base64,
+        mime: res.mime,
+        narrative: photos.length > 1
+          ? `根據 ${photos.length} 張來源圖描述合成`
+          : "根據來源圖描述重新生成",
+      });
       setResult(ingested);
       await persistToHistoryAndRefresh({
         mode: "edit",
@@ -237,12 +257,17 @@ function ImageStudio() {
     setError(null);
     clearResult();
     try {
-      const apiKey = await getApiKey(user.uid);
-      if (!apiKey) throw new Error("Gemini API key 未設定 — 去「設定」頁加。");
-      const res = await generateImage(prompt, selectedPersona, apiKey);
+      // Generate mode: pure text-to-image via Pollinations. No Gemini call
+      // needed (no API key required either, but we still let users add a
+      // persona context line for character consistency).
+      const personaLine = selectedPersona
+        ? `Featured character: ${selectedPersona.character_name}. `
+        : "";
+      const fullPrompt = `${personaLine}${prompt.trim()}`;
+      const res = await generateImagePollinations(fullPrompt);
       await incrementMonthlyImageUsage(user.uid).catch(() => {});
       refreshUsage();
-      const ingested = ingestResult(res);
+      const ingested = ingestResult({ base64: res.base64, mime: res.mime });
       setResult(ingested);
       await persistToHistoryAndRefresh({
         mode: "generate",
@@ -411,10 +436,8 @@ function ImageStudio() {
                 }
               />
               <p className="text-xs text-slate-400 mt-1">
-                💡{" "}
-                {photos.length > 1
-                  ? `多張合成時建議在指令裡用「第 1 張」「第 2 張」明確指涉,效果最好`
-                  : "越具體越好。記得寫「其他部分不要動」之類的保留指令。"}
+                💡 注意:這是「重新生成相似的圖」,不是真正的局部編輯。AI 會先把你的照片描述成文字,
+                再加上你的指令重新畫一張。結果風格類似但不會 1:1 保留原圖細節。
               </p>
             </div>
             <button
@@ -469,35 +492,18 @@ function ImageStudio() {
           </form>
         )}
 
-        {/* Monthly usage gauge */}
-        {(() => {
-          const cost = monthlyCount * COST_PER_IMAGE_USD;
-          const pct = Math.min(100, (cost / MONTHLY_BUDGET_USD) * 100);
-          const barColor =
-            pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-green-500";
-          return (
-            <div className="mt-4 bg-white p-3 rounded-lg border border-slate-200">
-              <div className="flex justify-between items-baseline mb-1.5 text-xs">
-                <span className="font-medium text-slate-700">本月圖像 API 用量</span>
-                <span className="text-slate-500">
-                  ${cost.toFixed(2)} / ${MONTHLY_BUDGET_USD.toFixed(2)}
-                </span>
-              </div>
-              <div className="h-2 bg-slate-100 rounded overflow-hidden mb-1.5">
-                <div
-                  className={`h-full transition-all ${barColor}`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <div className="text-[10px] text-slate-400 leading-relaxed">
-                {usageLoaded
-                  ? `已產 ${monthlyCount} 張 × $${COST_PER_IMAGE_USD}/張 · `
-                  : "讀取中... · "}
-                預算 ${MONTHLY_BUDGET_USD} 是你在 GCP Console 設的軟性上限,真實帳單以 GCP Billing 為準
-              </div>
-            </div>
-          );
-        })()}
+        {/* Monthly usage stat — Pollinations is free, just a usage counter */}
+        <div className="mt-4 bg-white p-3 rounded-lg border border-slate-200 text-xs">
+          <div className="flex justify-between items-baseline mb-1">
+            <span className="font-medium text-slate-700">本月圖像產量</span>
+            <span className="text-green-600 font-semibold">$0.00 (免費)</span>
+          </div>
+          <div className="text-[10px] text-slate-400 leading-relaxed">
+            {usageLoaded ? `已產 ${monthlyCount} 張 · ` : "讀取中... · "}
+            圖像由 <a href="https://pollinations.ai" target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">Pollinations.ai</a>{" "}
+            生成(免費,無 key);修圖前的場景描述用 Gemini Vision(免費 tier 內,文字)
+          </div>
+        </div>
       </section>
 
       <section>
