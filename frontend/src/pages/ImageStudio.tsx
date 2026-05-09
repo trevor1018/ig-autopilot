@@ -409,12 +409,51 @@ function ImageStudio() {
                     : "例:把暖暖豬的眼睛閉起來,看起來像在睡覺,其他部分完全不要動"
                 }
               />
-              <p className="text-xs text-slate-400 mt-1">
-                💡{" "}
-                {photos.length > 1
-                  ? `多張合成時建議在指令裡用「第 1 張」「第 2 張」明確指涉,效果最好`
-                  : "越具體越好。記得寫「其他部分不要動」之類的保留指令。"}
-              </p>
+              <details className="mt-1 text-xs">
+                <summary className="cursor-pointer text-brand-600 hover:underline list-none">
+                  💡 提示:
+                  {photos.length > 1
+                    ? "多張合成的小技巧"
+                    : "什麼指令好用 / 不好用 (點開)"}
+                </summary>
+                <div className="mt-2 space-y-1.5 text-slate-500 leading-relaxed pl-1">
+                  {photos.length > 1 ? (
+                    <>
+                      <div>
+                        ✅ 用「第 1 張」「第 2 張」明確指涉:「把第 1 張的花束放到第 2 張的場景」
+                      </div>
+                      <div>
+                        ✅ 講清楚要保留誰 / 移除誰:「保留第 1 張的暖暖豬,背景換成第 2 張」
+                      </div>
+                      <div>
+                        ⭐ 英文指令通常比中文穩定
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-green-700">
+                        ✅ 擅長:改顏色 / 表情 / 衣服 / 加減小物 / 換背景 / 調光線
+                      </div>
+                      <div className="text-red-600">
+                        ❌ 較弱:**精確比例 / 大小變化** (「放大成 2.5 倍」常被忽略)、精確位移、嚴格幾何
+                      </div>
+                      <div>
+                        ⭐ 用 比較式 而非數字 ——「巨大的 X,迷你的 Y」&gt;「2.5 倍」
+                      </div>
+                      <div>
+                        ⭐ 英文 比中文穩定 — "Make the X huge, towering over the Y"
+                      </div>
+                      <div>
+                        ⭐ 想要「保持原樣其他不要動」要明寫 — 不寫的話模型有時會自由發揮
+                      </div>
+                      <div className="text-slate-400 mt-1">
+                        如果你的指令是大幅度比例/構圖變化(像是花束放大成兩倍),
+                        改用「🎨 AI 生成圖」mode 重新生成整張通常更穩。
+                      </div>
+                    </>
+                  )}
+                </div>
+              </details>
             </div>
             <button
               type="submit"
