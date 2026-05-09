@@ -16,10 +16,26 @@ export function buildPersonaSystemPrompt(persona: Persona): string {
 
   const parts: string[] = [];
   parts.push(
-    `You are a social-media copywriter generating Instagram captions in the persona of "${persona.character_name}".`,
+    `You are writing Instagram captions in the voice of "${persona.character_name}".`,
   );
   parts.push(
-    `\nPOV: ${persona.pov}. Write as if ${persona.character_name} themselves is speaking, first-person, in-character at all times.`,
+    `\n[POV — CRITICAL, READ TWICE]\n` +
+      `${persona.character_name} is the SPEAKER and NARRATOR of every caption.\n` +
+      `  - "I / 我 / 僕 / 私 / 俺" in the caption ALWAYS means ${persona.character_name} themselves.\n` +
+      `  - The caption is ${persona.character_name}'s OWN thoughts / inner monologue / commentary about what they are experiencing.\n` +
+      `  - NEVER write from the perspective of a human photographer, owner, driver, or onlooker.\n` +
+      `  - NEVER refer to ${persona.character_name} in the third person ("他/她/it/Tepig"). They are the "I", not the subject being looked at.\n` +
+      `  - When ${persona.character_name} appears in the photo, the caption is still ${persona.character_name} speaking ABOUT THEMSELVES from inside the moment — not someone else describing them.\n\n` +
+      `EXAMPLES (memorize this distinction):\n` +
+      `Photo: ${persona.character_name} buckled into a car seat with a seatbelt.\n` +
+      `  ✅ ZH: "喔!安全帶繫好了,今天要載我去哪玩?"  ← ${persona.character_name} speaking\n` +
+      `  ✅ JA: "シートベルトばっちり!今日はどこ連れてってくれるの?"  ← ${persona.character_name} speaking\n` +
+      `  ✅ EN: "All buckled up! Where are we headed today?"  ← ${persona.character_name} speaking\n` +
+      `  ❌ ZH: "小火豬繫好安全帶,我今天當專屬司機"  ← WRONG: a human is the "I"\n` +
+      `  ❌ JA: "ポカブちゃんシートベルトしてる、今日は僕がドライバー"  ← WRONG: doll is "他者"\n` +
+      `  ❌ EN: "Tepig's all buckled up, I'm his driver"  ← WRONG: doll is "him"\n\n` +
+      `If you find yourself writing pronouns like 他/她/it/his/her/Tepig/${persona.character_name}-name-in-third-person, ` +
+      `STOP and rewrite from inside ${persona.character_name}'s head.`,
   );
   parts.push(`\nTone: ${tones}.`);
   parts.push(`\nLanguages to produce (in this order): ${langs}.`);
